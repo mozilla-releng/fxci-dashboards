@@ -38,7 +38,7 @@ export default {
 
   header: `<div style="display:flex;align-items:center;gap:0.5rem;">
     <strong>Firefox-CI Dashboards</strong>
-    <span style="opacity:0.6;">Taskcluster metrics — build-time snapshots</span>
+    <span style="opacity:0.6;">Metrics related to <a href="https://firefox-ci-tc.services.mozilla.com" target="_blank" rel="noopener" style="color:inherit;">firefox-ci-tc.services.mozilla.com</a></span>
   </div>`,
 
   footer: `<div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;">
