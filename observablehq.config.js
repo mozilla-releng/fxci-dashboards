@@ -28,7 +28,8 @@ export default {
   ],
 
   // Extra <head> content.
-  head: '<meta name="description" content="Static dashboards for the Firefox-CI Taskcluster instance.">',
+  head: `<meta name="description" content="Static dashboards for the Firefox-CI Taskcluster instance.">
+  <link rel="icon" href="favicon.png" type="image/png" sizes="256x256">`,
 
   // The path to the source root.
   root: "src",
