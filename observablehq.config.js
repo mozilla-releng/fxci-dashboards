@@ -6,6 +6,11 @@ export default {
   // The pages and sections in the sidebar. Add one entry per dashboard.
   pages: [
     {name: "Overview", path: "/"},
+    {
+      name: "VCS",
+      open: true,
+      pages: [{name: "Gecko2Github Migration", path: "/gecko2github"}]
+    }
   ],
 
   // Extra <head> content.
