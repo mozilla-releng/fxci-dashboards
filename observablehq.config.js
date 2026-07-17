@@ -1,7 +1,21 @@
 // See https://observablehq.com/framework/config for documentation.
+import {readFileSync} from "node:fs";
+import {load} from "js-yaml";
+
+// Query registry (see src/data/_queries.yaml) — drives which data/<name>.json
+// outputs the parameterized loader (src/data/[name].json.js) must produce.
+const queries = load(readFileSync(new URL("./src/data/_queries.yaml", import.meta.url), "utf8"));
+
 export default {
   // The app's title; used in the sidebar and webpage titles.
   title: "Firefox-CI Dashboards",
+
+  // Enumerates the concrete data/<name>.json paths for the parameterized
+  // loader — Framework can't discover these on its own since [name].json.js
+  // matches no fixed path.
+  async *dynamicPaths() {
+    for (const q of queries) yield `/data/${q.name}.json`;
+  },
 
   // The pages and sections in the sidebar. Add one entry per dashboard.
   pages: [

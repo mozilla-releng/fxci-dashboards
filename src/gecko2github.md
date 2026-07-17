@@ -7,8 +7,8 @@ toc: false
 
 Tracks Gecko's migration from Mercurial (`hg.mozilla.org`) to Git/GitHub by
 comparing VCS checkout (clone/pull) times for hg vs git, across Gecko tasks.
-Snapshot taken at build time from STMO — see
-[`data/_queries.md`](./data/_queries.md) for which queries back this page.
+Snapshot taken at build time from STMO — see `data/_queries.yaml` for which
+queries back this page.
 
 ```js
 const trend = await FileAttachment("data/gecko2github-trend.json").json();

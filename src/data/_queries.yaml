@@ -1,0 +1,29 @@
+# STMO query registry — which STMO (Redash) query backs each
+# data/<name>.json output. Drives observablehq.config.js (dynamicPaths) and
+# the shared data loader ([name].json.js): adding a query here is enough, no
+# new loader file needed. The SQL itself lives on
+# https://sql.telemetry.mozilla.org (via the web UI or stmo-cli), authored
+# there rather than checked into this repo.
+#
+# Each query is fetched with its own Redash API key (query page -> API Key),
+# not a shared user-level key, so one key only ever exposes that one query's
+# cached results. `secretEnv` is the name of the GitHub `production`
+# environment secret holding that key — see the README for `gh secret set`.
+#
+# To add a dashboard: create/find its STMO query, grab its per-query API
+# key, add it as a `production` environment secret, then add a row below.
+
+- name: gecko2github-trend
+  title: "Gecko2Github: daily hg/git VCS time percentiles"
+  queryId: 123300
+  secretEnv: REDASH_API_KEY_GECKO2GITHUB_TREND
+
+- name: gecko2github-workerpool
+  title: "Gecko2Github: median clone time by worker pool"
+  queryId: 123299
+  secretEnv: REDASH_API_KEY_GECKO2GITHUB_WORKERPOOL
+
+- name: gecko2github-gittasks
+  title: "Gecko2Github: per-task detail for git checkout tasks"
+  queryId: 123298
+  secretEnv: REDASH_API_KEY_GECKO2GITHUB_GITTASKS

@@ -10,7 +10,8 @@
     "format": "prettier --write \"src/**/*.{js,md}\" \"*.js\""
   },
   "dependencies": {
-    "@observablehq/framework": "^1.13.4"
+    "@observablehq/framework": "^1.13.4",
+    "js-yaml": "^5.2.1"
   },
   "devDependencies": {
     "prettier": "^3.3.3",

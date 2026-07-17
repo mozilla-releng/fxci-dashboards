@@ -9,41 +9,44 @@ build-time snapshots of STMO data, not a live app.
 ## Adding a dashboard
 
 1. Create or find the STMO ([sql.telemetry.mozilla.org](https://sql.telemetry.mozilla.org))
-   query; note its id and add a row to `src/data/_queries.md` — the only place
-   the loader-to-query mapping is documented, since the SQL itself lives on
-   STMO, not in this repo.
-2. Add `src/data/<name>.json.js`:
-   ```js
-   import {fetchRows} from "./_stmo.js";
-   const rows = await fetchRows(<queryId>);
-   process.stdout.write(JSON.stringify(rows));
-   ```
-   Loaders fetch **cached** STMO results (never trigger re-execution) and
-   `throw` on missing config or bad data — a non-zero exit fails the whole
-   build, which is the intended alarm.
-3. Add `src/<name>.md` that reads `FileAttachment("data/<name>.json").json()`
-   and renders it with `Plot` / `Inputs` (implicit globals, no import needed).
+   query. Grab its own API key (query page → API Key — not your personal
+   key; each query has one scoped to just its own cached results) and add it
+   as a `production` environment secret named `REDASH_API_KEY_<NAME>` (see
+   the README for the `gh secret set` command).
+2. Add a row to `src/data/_queries.yaml` — the only place the query-to-secret
+   mapping is documented, since the SQL itself lives on STMO, not in this
+   repo. The shared data loader (`src/data/[name].json.js`) then produces
+   `data/<name>.json` for it automatically; no new loader file needed.
+3. Add (or extend) `src/<name>.md` that reads
+   `FileAttachment("data/<name>.json").json()` and renders it with `Plot` /
+   `Inputs` (implicit globals, no import needed). A page can pull from more
+   than one query — see `gecko2github.md`, which combines three.
 4. Add a `{name, path}` entry to `pages` in `observablehq.config.js` so it
-   shows up in the sidebar.
+   shows up in the sidebar (only needed for a genuinely new page — not for a
+   new query feeding an existing one).
 5. `npm run build` must pass.
 
-Files/dirs starting with `_` (e.g. `_stmo.js`, `_queries.md`) are helpers, not
-pages. `src/queue-health.md` / `src/data/queue-pending.json.js` are a
+Files/dirs starting with `_` (e.g. `_stmo.js`, `_queries.yaml`) are helpers,
+not pages. `src/queue-health.md` / `src/data/queue-pending.json.js` are a
 template with a placeholder query id (`0`) — expected to fail the build until
 pointed at a real query.
 
 ## Local dev & auth
 
 ```sh
-export REDASH_API_KEY=...   # scoped Redash key, dedicated user/group
+export REDASH_API_KEY=...   # personal key; fine for local dev (see _stmo.js)
 npm ci
 npm run dev                 # http://localhost:3000, hot-reloads
 ```
 
-`npm run build` is the CI gate: fails on loader errors (missing
-`REDASH_API_KEY`, bad query id, network/auth) or `.md`/import parse errors. It
-does **not** fail on a runtime error inside a page's reactive JS block — those
-render inline instead — so put data-shape assertions in loaders.
+CI instead uses a dedicated per-query key (`REDASH_API_KEY_<LOADER_NAME>`,
+one per row in `src/data/_queries.md`) set as a `production` GitHub
+environment secret — see the README for the `gh secret set` command.
+
+`npm run build` is the CI gate: fails on loader errors (missing API key env
+var, bad query id, network/auth) or `.md`/import parse errors. It does **not**
+fail on a runtime error inside a page's reactive JS block — those render
+inline instead — so put data-shape assertions in loaders.
 
 ## Build & deploy
 
@@ -52,9 +55,10 @@ render inline instead — so put data-shape assertions in loaders.
 
 - Deploy `dist/` only — never the repo root or `src/`.
 - Don't add a top-level `index.html`; Framework generates one from `src/index.md`.
-- CI mirrors this: `.github/workflows/deploy.yml` (push to `main`) and
-  `refresh.yml` (hourly, clears the loader cache first) both build then
-  deploy. Both need the `REDASH_API_KEY` repo secret.
+- CI mirrors this: `.github/workflows/deploy.yml` builds then deploys on push
+  to `main` and on an hourly schedule (clearing the loader cache first). It
+  runs under the `production` GitHub environment and needs one
+  `REDASH_API_KEY_<LOADER_NAME>` secret per query — see `src/data/_queries.md`.
 - Site name is fixed as `fxci`. Also useful: `quick list`, `quick open fxci`.
 
 ## Quick client SDK can be used
