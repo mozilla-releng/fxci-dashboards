@@ -13,6 +13,9 @@ name: Deploy to Quick
 on:
   push:
     branches: [main]
+    paths:
+      - "src/**"
+      - "observablehq.config.js"
   schedule:
     - cron: "15 */4 * * *" # every 4 hours at :15 UTC — tune to match STMO refresh cadence
   workflow_dispatch:
