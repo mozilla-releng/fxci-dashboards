@@ -5,7 +5,7 @@
 Dashboards for the Firefox-CI Taskcluster instance. Built with [Observable
 Framework](https://observablehq.com/framework/), deployed to
 [Quick](https://quick.mozilla.cloud/) (Mozilla SSO required). Data is a
-periodic build-time snapshot from STMO, not live.
+periodic build-time snapshot from [STMO](https://sql.telemetry.mozilla.org/), not live.
 
 ## Local development
 
@@ -23,7 +23,7 @@ See the source under `src/` for the dashboard/data-loader model.
 
 ## CI secrets
 
-CI reads a dedicated key per STMO query (see `src/data/_queries.md`) from
+CI reads a dedicated key per STMO query (see `src/data/_queries.yml`) from
 this repo's `production` GitHub environment, each scoped to just that
 query's cached results. To add or rotate one:
 
