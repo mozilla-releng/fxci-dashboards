@@ -21,10 +21,6 @@ on:
         description: "Site name to deploy to (default: the repo name)"
         type: string
         default: ""
-      force:
-        description: Overwrite even if the site was last deployed by someone else
-        type: boolean
-        default: false
 permissions:
   contents: read
   id-token: write
@@ -62,4 +58,4 @@ jobs:
         run: |
           gcloud storage cp gs://moz-fx-quick-prod-cli/quick-linux-amd64 ./quick
           chmod +x ./quick
-          ./quick deploy "$DIR" "$SITE" --mirror ${{ (inputs.force || github.event_name == 'schedule') && '--yes' || '' }}
+          ./quick deploy "$DIR" "$SITE" --mirror --yes
