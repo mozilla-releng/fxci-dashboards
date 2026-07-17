@@ -59,5 +59,9 @@ export default {
 
   toc: true,
   sidebar: true,
-  search: true
+  search: true,
+
+  // Dashboards aren't a linear doc flow, so the auto prev/next pager adds
+  // noise rather than useful navigation.
+  pager: false
 };
