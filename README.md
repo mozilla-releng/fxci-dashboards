@@ -1,6 +1,7 @@
 # Firefox-CI Dashboards
 
 [![Live](https://img.shields.io/badge/live-fxci.quick.mozilla.cloud-0060df)](https://fxci.quick.mozilla.cloud/)
+[![Deploy](https://github.com/mozilla-releng/fxci-dashboards/actions/workflows/deploy.yml/badge.svg)](https://github.com/mozilla-releng/fxci-dashboards/actions/workflows/deploy.yml)
 
 Dashboards for the Firefox-CI Taskcluster instance. Built with [Observable
 Framework](https://observablehq.com/framework/), deployed to
