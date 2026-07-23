@@ -113,6 +113,15 @@ const projects = [...new Set([...trend, ...workerPool, ...gitTasks].map((d) => d
 const kinds = [...new Set([...trend, ...workerPool, ...gitTasks].map((d) => d.kind))].filter((k) => k != null).sort();
 const oses = [...new Set([...trend, ...workerPool, ...gitTasks].map((d) => d.os))].filter((o) => o != null).sort();
 
+// Seeds filters from the URL (?project=&kind=&os=&from=&to=) so a link with
+// query params reproduces the same view. Only read once at load — this page
+// has no client-side router, so there's nothing to react to on navigation.
+const urlParams = new URLSearchParams(window.location.search);
+function paramOr(name, allowed) {
+  const v = urlParams.get(name);
+  return v && allowed.includes(v) ? v : "All";
+}
+
 // trend/workerPool carry `day`; gitTasks only has a per-task `started`
 // timestamp, so pull its date portion in too — all three are bound by the
 // same rolling STMO query window, so the min/max should already agree.
@@ -126,9 +135,9 @@ const maxDay = availableDays[availableDays.length - 1];
 
 // Built without view() so they can be laid out in a custom flex bar below
 // instead of Framework's default one-per-line stack.
-const projectInput = Inputs.select(["All", ...projects], {label: "Project", value: "All"});
-const kindInput = Inputs.select(["All", ...kinds], {label: "Kind", value: "All"});
-const osInput = Inputs.select(["All", ...oses], {label: "OS", value: "All"});
+const projectInput = Inputs.select(["All", ...projects], {label: "Project", value: paramOr("project", projects)});
+const kindInput = Inputs.select(["All", ...kinds], {label: "Kind", value: paramOr("kind", kinds)});
+const osInput = Inputs.select(["All", ...oses], {label: "OS", value: paramOr("os", oses)});
 
 const project = Generators.input(projectInput);
 const kind = Generators.input(kindInput);
@@ -137,12 +146,22 @@ const os = Generators.input(osInput);
 // Holds the brush-selected [from, to] Dates, or null for "full range". A
 // Mutable (rather than a view()-bound input) so setting it from the brush
 // handler doesn't require the chart itself to be a form input.
-const dateRange = Mutable(null);
+// UTC, not local time — matches the "utc"-typed x scale on the brush chart
+// (whose bars are keyed off plain "YYYY-MM-DD" strings, parsed as UTC
+// midnight) so a round trip through the URL lands on the same day
+// regardless of the viewer's timezone.
+function isoDate(d) {
+  return d.toISOString().slice(0, 10);
+}
+function initialDateRange() {
+  const from = urlParams.get("from");
+  const to = urlParams.get("to");
+  if (!from || !to || from > to || from < minDay || to > maxDay) return null;
+  return [new Date(`${from}T00:00:00Z`), new Date(`${to}T00:00:00Z`)];
+}
+const dateRange = Mutable(initialDateRange());
 function setDateRange(v) {
   dateRange.value = v;
-}
-function isoDate(d) {
-  return d.toLocaleDateString("en-CA");
 }
 ```
 
@@ -158,6 +177,25 @@ function isoDate(d) {
     </div>
   </div>
 </div>
+
+```js
+// Keeps the URL in sync with the current filters so the view is linkable/
+// bookmarkable. Deliberately its own cell, separate from the one declaring
+// the dateRange Mutable — merging them would make this effect's dependency
+// on project/kind/os re-run that cell too, recreating (and resetting) the
+// Mutable on every filter change.
+{
+  const params = new URLSearchParams(window.location.search);
+  const set = (key, val) => (val ? params.set(key, val) : params.delete(key));
+  set("project", project === "All" ? null : project);
+  set("kind", kind === "All" ? null : kind);
+  set("os", os === "All" ? null : os);
+  set("from", dateRange ? isoDate(dateRange[0]) : null);
+  set("to", dateRange ? isoDate(dateRange[1]) : null);
+  const qs = params.toString();
+  history.replaceState(null, "", `${window.location.pathname}${qs ? `?${qs}` : ""}${window.location.hash}`);
+}
+```
 
 ```js
 // Defaults to the full available window until the user brushes the volume
