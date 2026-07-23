@@ -460,8 +460,7 @@ function workerPoolChart({width} = {}) {
 
 ## Git checkout tasks
 
-Per-task detail for the (currently small) set of gecko tasks checking out via
-Git. Click a point to open its profile.
+Per-task detail for tasks checking out via Git. Click a point to open its profile.
 
 ```js
 const TC = "https://firefox-ci-tc.services.mozilla.com";
