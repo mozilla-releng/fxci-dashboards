@@ -23,7 +23,10 @@ export default {
     {
       name: "VCS",
       open: true,
-      pages: [{name: "Gecko2Github Migration", path: "/gecko2github"}]
+      pages: [
+        {name: "Checkout Caches", path: "/checkout-caches"},
+        {name: "Gecko2Github Migration", path: "/gecko2github"}
+      ]
     }
   ],
 

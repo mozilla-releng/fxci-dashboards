@@ -27,3 +27,8 @@
   title: "Gecko2Github: per-task detail for git checkout tasks"
   queryId: 123298
   secretEnv: REDASH_API_KEY_GECKO2GITHUB_GITTASKS
+
+- name: checkout-caches-workerpool
+  title: "Checkout Caches: cache hit/miss counts by worker pool"
+  queryId: 123849
+  secretEnv: REDASH_API_KEY_CHECKOUT_CACHES_WORKERPOOL

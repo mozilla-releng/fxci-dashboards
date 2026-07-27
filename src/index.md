@@ -10,5 +10,7 @@ build-time snapshot fetched from cached
 on a schedule. See the [source
 repo](https://github.com/mozilla-releng/fxci-dashboards) for more details.
 
+- [Checkout Caches](./checkout-caches) — cache hit/miss rates by worker pool
+  for VCS checkouts.
 - [Gecko2Github Migration](./gecko2github) — hg vs git VCS checkout time for
   Gecko tasks, tracking the migration to Git/GitHub.
