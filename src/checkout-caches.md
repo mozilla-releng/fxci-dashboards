@@ -5,24 +5,15 @@ toc: false
 
 # Checkout Caches
 
-Firefox-CI workers keep a persistent, shared VCS store (via
-[`robustcheckout`](https://searchfox.org/mozilla-central/source/testing/mozharness/external_tools/robustcheckout.py))
-so most checkouts avoid a full clone. Each checkout task falls into one of
-three states, from best to worst:
+Firefox-CI tasks can use a persistent checkout cache to avoid needing a full
+clone. Each task falls into one of three states, from best to worst:
 
-- **nopull** — the wanted revision and working directory were already local;
-  no network activity at all.
-- **pull** — the shared store already existed, but the task had to pull new
-  commits and/or repopulate the working directory. This is the expected
-  steady state for CI, since the tip revision changes on every push.
-- **clone** — the shared store didn't exist on this worker yet, so a full
-  clone was required. This is the expensive, cache-cold case.
+- **nopull** - checkout exists and desired revision was already present
+- **pull** - checkout exists but desired revision needed to be fetched
+- **clone** - checkout did not exist and full clone was required
 
-"Cache hit rate" below means the share of checkouts that avoided a full
-clone (`nopull` + `pull`). The underlying STMO query only covers a rolling
-**28-day window**, refreshed daily — the date range control below can only
-narrow within that window, not look further back. See `data/_queries.yaml`
-for which query backs this page.
+"Cache hit rate" below means the share of checkouts that avoided a full clone
+(`nopull` + `pull`). See `data/_queries.yaml` for which query backs this page.
 
 ```js
 const rows = await FileAttachment("data/checkout-caches-workerpool.json").json();
