@@ -272,8 +272,48 @@ function aggregateWorkerPool(rows) {
   });
 }
 
+// Collapses to one row per (kind, vcs_type) — just a tasks sum, since the
+// kind chart only needs volume, not percentiles.
+function aggregateByKind(rows) {
+  const acc = new Map();
+  for (const r of rows) {
+    if (r.kind == null) continue;
+    const key = `${r.kind}|${r.vcs_type}`;
+    const a = acc.get(key) ?? {kind: r.kind, vcs_type: r.vcs_type, tasks: 0};
+    a.tasks += r.tasks ?? 0;
+    acc.set(key, a);
+  }
+  return [...acc.values()];
+}
+
 const aggregatedTrend = aggregateTrend(filteredTrend);
 const aggregatedWorkerPool = aggregateWorkerPool(filteredWorkerPool);
+const aggregatedByKind = aggregateByKind(filteredTrend);
+
+// Ranks kinds by *remaining hg* checkouts — the point is "what still needs
+// converting", not overall footprint — but each bar still stacks in its git
+// checkouts too, so conversion progress is visible alongside the ranking.
+const KIND_TOP_N = 10;
+const hgKindTotals = new Map();
+for (const r of aggregatedByKind) {
+  if (r.vcs_type === "hg") hgKindTotals.set(r.kind, (hgKindTotals.get(r.kind) ?? 0) + r.tasks);
+}
+const allKinds = [...new Set(aggregatedByKind.map((r) => r.kind))];
+const sortedKinds = allKinds.sort((a, b) => (hgKindTotals.get(b) ?? 0) - (hgKindTotals.get(a) ?? 0));
+const topKinds = new Set(sortedKinds.slice(0, KIND_TOP_N));
+const otherKinds = sortedKinds.slice(KIND_TOP_N);
+
+// Remaining kinds beyond the top N collapse into a single "Other" bar so the
+// chart stays readable regardless of how many kinds exist.
+const otherTotals = new Map();
+for (const r of aggregatedByKind) {
+  if (!topKinds.has(r.kind)) otherTotals.set(r.vcs_type, (otherTotals.get(r.vcs_type) ?? 0) + r.tasks);
+}
+const kindChartRows = [
+  ...aggregatedByKind.filter((r) => topKinds.has(r.kind)),
+  ...[...otherTotals].map(([vcs_type, tasks]) => ({kind: "Other", vcs_type, tasks}))
+];
+const kindChartDomain = otherKinds.length ? [...sortedKinds.slice(0, KIND_TOP_N), "Other"] : sortedKinds.slice(0, KIND_TOP_N);
 
 // Collapses aggregatedTrend's per-day rows down to one per vcs_type, giving
 // totals/weighted-averages across the whole selected date range rather than
@@ -383,6 +423,37 @@ function dateRangePicker({width} = {}) {
     <h2>git avg VCS time</h2>
     <span class="big">${fmtMinutes(rangeTotal("git", "avg_overall"))}</span>
     <span class="muted">minutes</span>
+  </div>
+</div>
+
+```js
+// Horizontal stacked bar, top 10 kinds by remaining hg checkouts (the ones
+// most worth prioritizing for conversion) plus an "Other" bar for the rest.
+// Each bar still stacks in its git checkouts, so conversion progress is
+// visible alongside the ranking.
+function kindChart({width} = {}) {
+  if (!kindChartDomain.length) return htl.html`<p class="muted">No data for this filter.</p>`;
+  const height = Math.max(200, kindChartDomain.length * 26 + 60);
+  const marginLeft = Math.min(320, Math.max(120, Math.max(...kindChartDomain.map((k) => k.length)) * 6.5));
+  return Plot.plot({
+    title: "Task checkouts by kind — top 10 by remaining hg checkouts",
+    width,
+    height,
+    marginLeft,
+    y: {label: null, domain: kindChartDomain},
+    x: {label: "Tasks", grid: true},
+    color: {...VCS_COLOR, legend: true},
+    marks: [
+      Plot.barX(kindChartRows, {y: "kind", x: "tasks", fill: "vcs_type", tip: true}),
+      Plot.ruleX([0])
+    ]
+  });
+}
+```
+
+<div class="grid grid-cols-1">
+  <div class="card">
+    ${resize((width) => kindChart({width}))}
   </div>
 </div>
 
