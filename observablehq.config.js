@@ -27,6 +27,11 @@ export default {
         {name: "Checkout Caches", path: "/checkout-caches"},
         {name: "Gecko2Github Migration", path: "/gecko2github"}
       ]
+    },
+    {
+      name: "Worker Pools",
+      open: true,
+      pages: [{name: "MacOS Test Pools", path: "/macos-test-pools"}]
     }
   ],
 

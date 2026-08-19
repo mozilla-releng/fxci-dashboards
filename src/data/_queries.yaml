@@ -32,3 +32,8 @@
   title: "Checkout Caches: cache hit/miss counts by worker pool"
   queryId: 123849
   secretEnv: REDASH_API_KEY_CHECKOUT_CACHES_WORKERPOOL
+
+- name: macos-test-pools-usage
+  title: "MacOS Test Pools: daily task runs, machine-hours and fleet size by pool"
+  queryId: 125256
+  secretEnv: REDASH_API_KEY_MACOS_TEST_POOLS_USAGE
