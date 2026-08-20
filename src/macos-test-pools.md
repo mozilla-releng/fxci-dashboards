@@ -37,10 +37,19 @@ What the metrics mean:
   have one (the default, unmodified run — about 82% of tasks), and for the
   non-test work these pools also pick up the task *kind* stands in for the
   missing suite (`perftest`, `source-test`, `update-test`, …).
+- **Trust domain / project** — where the work came from, written as
+  `{trust_domain}/{project}`. The trust domain is the CI security domain
+  (`gecko`, `comm`, `enterprise`); the project is the repository or branch
+  (`autoland`, `try`, `mozilla-beta`, …). Always shown as the pair, because a
+  project name isn't unique on its own — `(untagged)` occurs under two
+  different domains. Tasks that reach these pools carrying no taskgraph tags
+  (almost all of them `enterprise-level-1`) still get a trust domain, which is
+  recovered from the scheduler id, but have no branch to attribute to and land
+  in `(untagged)`.
 
 Runs are bucketed by the day they started, and only complete days are shown —
-today is still accumulating. See `data/_queries.yaml` for which query backs
-this page.
+today is still accumulating. See `data/_queries.yaml` for the queries that
+back this page.
 
 ```js
 const rows = await FileAttachment("data/macos-test-pools-usage.json").json();
@@ -705,3 +714,213 @@ Inputs.table(suiteTable, {
   select: false
 })
 ```
+
+## Usage by trust domain / project
+
+Who the pools are actually working for. This comes from a second query at a
+`(day, pool, trust_domain, project)` grain over the same runs, so it slices the
+same machine-hours the charts above do — just by *where the work came from*
+rather than what it was. Every filter above applies here too.
+
+```js
+// Second STMO query (125465). Same runs, same window, same dedup as the usage
+// query — only the breakdown dimension differs — so a pool-day's hours are
+// the same total on both sides, which the coverage check below verifies
+// rather than assumes.
+const originData = await FileAttachment("data/macos-test-pools-projects.json").json();
+```
+
+```js
+// Always the qualified pair, never the bare project: `(untagged)` legitimately
+// occurs under two different trust domains, so a project name alone would
+// silently merge two distinct groups into one bar.
+function originLabel(r) {
+  return `${r.trust_domain}/${r.project}`;
+}
+
+// Mirrors aggregateBySuite — same shape, same reason to exist: collapse the
+// day dimension away and roll pools up into whichever series is selected.
+function aggregateByOrigin(inputRows, seriesOf) {
+  const acc = new Map();
+  for (const r of inputRows) {
+    const series = seriesOf(r.worker_pool);
+    const label = originLabel(r);
+    const key = `${label} ${series}`;
+    const a = acc.get(key) ?? {label, series, tasks: 0, taskHours: 0};
+    a.tasks += r.tasks ?? 0;
+    a.taskHours += r.task_hours ?? 0;
+    acc.set(key, a);
+  }
+  return [...acc.values()];
+}
+
+function fmtDelta(v) {
+  return v == null ? "—" : v.toLocaleString("en-US", {maximumFractionDigits: 1, signDisplay: "exceptZero"});
+}
+```
+
+```js
+const originPoolRows = originData.filter((r) => selectedPools.has(poolLabel(r.worker_pool)));
+const originRangeRows = originPoolRows.filter((r) => r.day >= rangeStart && r.day <= rangeEnd);
+
+const originRows = aggregateByOrigin(originRangeRows, seriesOf);
+
+const hoursByOrigin = new Map();
+const tasksByOrigin = new Map();
+for (const r of originRows) {
+  hoursByOrigin.set(r.label, (hoursByOrigin.get(r.label) ?? 0) + r.taskHours);
+  tasksByOrigin.set(r.label, (tasksByOrigin.get(r.label) ?? 0) + r.tasks);
+}
+// No top-N collapsing here, unlike the suite chart: there are ~21 pairs in
+// total against 140+ suite/variant combinations, so the whole tail fits on
+// one chart and hiding any of it would only cost information.
+const originDomain = [...hoursByOrigin.keys()].sort(
+  (a, b) => hoursByOrigin.get(b) - hoursByOrigin.get(a) || a.localeCompare(b)
+);
+const totalOriginHours = [...hoursByOrigin.values()].reduce((a, b) => a + b, 0);
+
+// The parent level of the hierarchy is three values wide, so it's a sentence
+// rather than a chart.
+const tdHours = new Map();
+for (const r of originRangeRows) {
+  tdHours.set(r.trust_domain, (tdHours.get(r.trust_domain) ?? 0) + (r.task_hours ?? 0));
+}
+const tdRollCall = [...tdHours]
+  .sort((a, b) => b[1] - a[1])
+  .map(([d, h]) => `${d} ${fmtPercent(totalOriginHours > 0 ? h / totalOriginHours : null)}`)
+  .join(", ");
+```
+
+```js
+// Splits the selected range in half by day to show which projects are growing
+// into the pools and which are receding. Compared as absolute hours per day,
+// not as share: share moves whenever the fleet does, which would book a
+// capacity change against every project riding on it.
+const originDays = [...new Set(originRangeRows.map((r) => r.day))].sort();
+const splitAt = Math.floor(originDays.length / 2);
+const firstHalfDays = new Set(originDays.slice(0, splitAt));
+const secondHalfDays = new Set(originDays.slice(splitAt));
+
+const halfRates = new Map();
+for (const r of originRangeRows) {
+  const label = originLabel(r);
+  const a = halfRates.get(label) ?? {h1: 0, h2: 0, seen1: false, seen2: false};
+  if (firstHalfDays.has(r.day)) {
+    a.h1 += r.task_hours ?? 0;
+    a.seen1 = true;
+  } else if (secondHalfDays.has(r.day)) {
+    a.h2 += r.task_hours ?? 0;
+    a.seen2 = true;
+  }
+  halfRates.set(label, a);
+}
+
+const originTable = originDomain.map((label) => {
+  const a = halfRates.get(label) ?? {h1: 0, h2: 0, seen1: false, seen2: false};
+  const rate1 = firstHalfDays.size ? a.h1 / firstHalfDays.size : null;
+  const rate2 = secondHalfDays.size ? a.h2 / secondHalfDays.size : null;
+  // A project absent from one half has no comparable rate — a branch that was
+  // created or reached EOL mid-window isn't a demand shift, and reporting its
+  // absence as a fall to zero would rank it among the biggest movers.
+  const comparable = a.seen1 && a.seen2 && firstHalfDays.size > 0 && secondHalfDays.size > 0;
+  return {
+    label,
+    tasks: tasksByOrigin.get(label),
+    taskHours: hoursByOrigin.get(label),
+    share: totalOriginHours > 0 ? hoursByOrigin.get(label) / totalOriginHours : null,
+    rate1: comparable ? rate1 : null,
+    rate2: comparable ? rate2 : null,
+    delta: comparable ? rate2 - rate1 : null
+  };
+});
+const notComparable = originTable.filter((r) => r.delta == null).length;
+```
+
+```js
+// The two queries are independent STMO snapshots on the same daily schedule,
+// so they can sit one refresh apart. Compare only the pool-days present in
+// both: a whole-range total comparison reads that one-day offset as a
+// permanent value drift and would keep a data-quality alarm permanently lit
+// while the shared days actually agree to within rounding.
+const usageByPoolDay = new Map();
+for (const d of rangePoolDays) usageByPoolDay.set(`${d.day}|${d.worker_pool}`, d.taskHours);
+
+const originByPoolDay = new Map();
+for (const r of originRangeRows) {
+  const k = `${r.day}|${r.worker_pool}`;
+  originByPoolDay.set(k, (originByPoolDay.get(k) ?? 0) + (r.task_hours ?? 0));
+}
+
+let worstDrift = 0;
+for (const [k, u] of usageByPoolDay) {
+  const o = originByPoolDay.get(k);
+  if (o == null || !(u > 0)) continue;
+  worstDrift = Math.max(worstDrift, Math.abs(u - o) / u);
+}
+const usageOnlyPoolDays = [...usageByPoolDay.keys()].filter((k) => !originByPoolDay.has(k)).length;
+const originOnlyPoolDays = [...originByPoolDay.keys()].filter((k) => !usageByPoolDay.has(k)).length;
+
+// Rounding in the query (task_hours to 3dp) puts the floor well under this;
+// anything above it means the two breakdowns genuinely disagree about the
+// same runs.
+const DRIFT_ALARM = 0.005;
+```
+
+<p class="muted">
+Trust domain split by machine-hours: ${tdRollCall || "—"}.
+Covering ${fmtNumber(originDays.length)} day(s), ${originDays.length ? `${originDays[0]} – ${originDays[originDays.length - 1]}` : "—"}, across ${fmtNumber(originDomain.length)} trust-domain/project pair(s).${usageOnlyPoolDays > 0 ? ` ${fmtNumber(usageOnlyPoolDays)} pool-day(s) in range have no rows in this breakdown yet — the two queries refresh independently, so the newer snapshot can lead the other by a day.` : ""}${originOnlyPoolDays > 0 ? ` ${fmtNumber(originOnlyPoolDays)} pool-day(s) appear here but not in the totals above.` : ""}
+</p>
+
+${worstDrift > DRIFT_ALARM ? htl.html`<p class="muted"><strong>Data check:</strong> on the pool-days present in both queries, machine-hours disagree by up to ${fmtPercent(worstDrift)}. The two breakdowns cover the same runs, so they should match exactly — treat the split below as approximate until that's resolved.</p>` : ""}
+
+```js
+function originChart({width} = {}) {
+  if (!originDomain.length) return htl.html`<p class="muted">No data for this filter.</p>`;
+  const marginLeft = Math.min(320, Math.max(120, Math.max(...originDomain.map((s) => s.length)) * 6.5));
+  return Plot.plot({
+    title: "Machine-hours by trust domain / project",
+    width,
+    height: Math.max(220, originDomain.length * 26 + 60),
+    marginLeft,
+    y: {label: null, domain: originDomain},
+    x: {label: "Machine-hours", grid: true},
+    color: colorSpec,
+    marks: [
+      Plot.barX(originRows, {y: "label", x: "taskHours", fill: "series", order: seriesDomain, tip: true}),
+      Plot.ruleX([0])
+    ]
+  });
+}
+```
+
+<div class="grid grid-cols-1">
+  <div class="card">
+    ${resize((width) => originChart({width}))}
+  </div>
+</div>
+
+```js
+Inputs.table(originTable, {
+  columns: ["label", "tasks", "taskHours", "share", "rate1", "rate2", "delta"],
+  header: {
+    label: "Trust domain / project",
+    tasks: "Task runs",
+    taskHours: "Machine-hours",
+    share: "Share of hours",
+    rate1: "h/day, 1st half",
+    rate2: "h/day, 2nd half",
+    delta: "Δ h/day"
+  },
+  format: {
+    tasks: fmtNumber,
+    taskHours: fmtNumber,
+    share: fmtPercent,
+    rate1: fmtDecimal,
+    rate2: fmtDecimal,
+    delta: fmtDelta
+  },
+  select: false
+})
+```
+
+${notComparable > 0 ? htl.html`<p class="muted">${fmtNumber(notComparable)} pair(s) ran in only one half of the selected range, so they have no half-over-half rate to compare and are left blank rather than shown as a move to or from zero.</p>` : ""}
