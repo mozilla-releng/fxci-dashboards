@@ -14,3 +14,5 @@ repo](https://github.com/mozilla-releng/fxci-dashboards) for more details.
   for VCS checkouts.
 - [Gecko2Github Migration](./gecko2github) — hg vs git VCS checkout time for
   Gecko tasks, tracking the migration to Git/GitHub.
+- [MacOS Test Pools](./macos-test-pools) — task volume, machine-hours and
+  estimated utilization for the Intel and Apple Silicon MacOS test pools.
