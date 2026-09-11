@@ -560,7 +560,7 @@ function gitScatterChart({width} = {}) {
     ...r,
     checkoutType: r.clone_minutes != null ? "clone" : "pull"
   }));
-  return Plot.plot({
+  const plot = Plot.plot({
     title: "Git checkout tasks",
     width,
     height: 380,
@@ -577,13 +577,26 @@ function gitScatterChart({width} = {}) {
         symbol: "checkoutType",
         r: 3.5,
         opacity: 0.7,
-        href: (d) => taskProfilerUrl(d.task_id, d.run_id, d.project),
-        target: "_blank",
         channels: {platform: "platform", checkout: "checkoutType"},
         tip: {format: {stroke: true, symbol: true, x: true, y: true}}
       })
     ]
   });
+  // Deliberately not using Plot's per-dot `href` here: it wraps every point
+  // in its own SVG <a>, and Firefox exposes each one as an accessibility
+  // object whose bounds computation walks the *entire* mark group (SVG
+  // container frames never have a real rect, so the "empty rect" fallback
+  // path re-unions the whole subtree) — O(n^2) in the point count, and with
+  // a few thousand points that's a multi-minute main-thread hang for anyone
+  // with accessibility services active. A single click handler reading the
+  // tip's hovered datum keeps click-to-open-profile without the per-point
+  // <a> tags. Do not reintroduce a per-point href/target here.
+  plot.style.cursor = "pointer";
+  plot.addEventListener("click", () => {
+    const d = plot.value;
+    if (d) window.open(taskProfilerUrl(d.task_id, d.run_id, d.project), "_blank", "noopener");
+  });
+  return plot;
 }
 ```
 
