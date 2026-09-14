@@ -42,3 +42,8 @@
   title: "MacOS Test Pools: daily task runs and machine-hours by trust domain and project"
   queryId: 125465
   secretEnv: REDASH_API_KEY_MACOS_TEST_POOLS_PROJECTS
+
+- name: usage-by-user
+  title: "CI Usage: daily task runs, machine-hours, pending time and pushes by user and project"
+  queryId: 126750
+  secretEnv: REDASH_API_KEY_USAGE_BY_USER

@@ -27,9 +27,7 @@ build-time snapshots of STMO data, not a live app.
 5. `npm run build` must pass.
 
 Files/dirs starting with `_` (e.g. `_stmo.js`, `_queries.yaml`) are helpers,
-not pages. `src/queue-health.md` / `src/data/queue-pending.json.js` are a
-template with a placeholder query id (`0`) — expected to fail the build until
-pointed at a real query.
+not pages.
 
 ## Local dev & auth
 
@@ -60,8 +58,11 @@ capturing screenshots for layout review. Kill the disposable browser when
 done.
 
 CI instead uses a dedicated per-query key (`REDASH_API_KEY_<LOADER_NAME>`,
-one per row in `src/data/_queries.md`) set as a `production` GitHub
-environment secret — see the README for the `gh secret set` command.
+one per row in `src/data/_queries.yaml`) set as a `production` GitHub
+environment secret — see the README for the `gh secret set` command. That
+secret also needs adding to the `env:` block of the build step in
+`.github/workflows/deploy.yml`; a `_queries.yaml` row alone isn't enough
+since secrets are passed through explicitly, not enumerated automatically.
 
 `npm run build` is the CI gate: fails on loader errors (missing API key env
 var, bad query id, network/auth) or `.md`/import parse errors. It does **not**
@@ -78,7 +79,7 @@ inline instead — so put data-shape assertions in loaders.
 - CI mirrors this: `.github/workflows/deploy.yml` builds then deploys on push
   to `main` and on an hourly schedule (clearing the loader cache first). It
   runs under the `production` GitHub environment and needs one
-  `REDASH_API_KEY_<LOADER_NAME>` secret per query — see `src/data/_queries.md`.
+  `REDASH_API_KEY_<LOADER_NAME>` secret per query — see `src/data/_queries.yaml`.
 - Site name is fixed as `fxci`. Also useful: `quick list`, `quick open fxci`.
 
 ## Quick client SDK can be used

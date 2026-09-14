@@ -21,6 +21,13 @@ export default {
   pages: [
     {name: "Overview", path: "/"},
     {
+      name: "General",
+      open: true,
+      pages: [
+        {name: "Usage", path: "/hourly-usage"}
+      ]
+    },
+    {
       name: "VCS",
       open: true,
       pages: [
@@ -31,7 +38,9 @@ export default {
     {
       name: "Worker Pools",
       open: true,
-      pages: [{name: "MacOS Test Pools", path: "/macos-test-pools"}]
+      pages: [
+        {name: "MacOS Test Pools", path: "/macos-test-pools"}
+      ]
     }
   ],
 
