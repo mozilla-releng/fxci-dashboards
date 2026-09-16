@@ -8,6 +8,10 @@ toc: false
 Which projects, worker pools and users are consuming the most hours.
 
 ```js
+import {isoDate, dateRangeControl, attachDateBrush} from "./components/date-range.js";
+```
+
+```js
 // The STMO query emits "(untagged)" for runs with no project tag — relabel
 // to "Unknown" right after load so every downstream chart/table/dropdown
 // picks it up without special-casing the string everywhere.
@@ -75,16 +79,6 @@ function fmtPercent(v) {
   text-transform: uppercase;
   letter-spacing: 0.03em;
   color: var(--theme-foreground-muted, #888);
-  white-space: nowrap;
-}
-.filter-daterange-value-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: nowrap;
-}
-.filter-daterange-value {
-  font-size: 0.9rem;
   white-space: nowrap;
 }
 .filter-reset {
@@ -298,32 +292,17 @@ const poolInput = Inputs.text({
 });
 const poolPattern = Generators.input(poolInput);
 
-function isoDate(d) {
-  return d.toISOString().slice(0, 10);
-}
-// Parsed strictly rather than compared as strings: a plausible-looking
-// ?from=2026-06-1 passes a lexical range check but yields an Invalid Date,
-// which would throw out of the cell deriving every dataset on the page.
-const DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-function parseDay(s) {
-  if (!s || !DAY_PATTERN.test(s)) return null;
-  const d = new Date(`${s}T00:00:00Z`);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-const windowStart = parseDay(minDay);
-const windowEnd = parseDay(maxDay);
-function clampDay(d) {
-  return d < windowStart ? windowStart : d > windowEnd ? windowEnd : d;
-}
-function initialDateRange() {
-  const from = parseDay(urlParams.get("from"));
-  const to = parseDay(urlParams.get("to"));
-  if (!from || !to || from > to || to < windowStart || from > windowEnd) return null;
-  return [clampDay(from), clampDay(to)];
-}
-const dateRange = Mutable(initialDateRange());
+// Kept free of reactive dependencies: re-running this cell would rebuild the
+// control, losing the typed range and the user's focus.
+const dateRangeInput = dateRangeControl({
+  minDay,
+  maxDay,
+  from: urlParams.get("from"),
+  to: urlParams.get("to")
+});
+const dateRange = Generators.input(dateRangeInput);
 function setDateRange(v) {
-  dateRange.value = v ? [clampDay(v[0]), clampDay(v[1])] : null;
+  dateRangeInput.setRange(v);
 }
 
 // The breakdown value doubles as the row property name ("project",
@@ -353,10 +332,7 @@ const breakdown = Generators.input(breakdownInput);
   </div>
   <div class="filter-daterange">
     <span class="filter-daterange-label">Date range</span>
-    <div class="filter-daterange-value-row">
-      <span class="filter-daterange-value">${dateRange ? `${isoDate(dateRange[0])} – ${isoDate(dateRange[1])}` : `${minDay} – ${maxDay}`}</span>
-      ${htl.html`<button class="filter-reset" disabled=${!dateRange} onclick=${() => setDateRange(null)}>Reset</button>`}
-    </div>
+    ${dateRangeInput}
   </div>
   <div>${breakdownInput}</div>
 </div>
@@ -387,9 +363,9 @@ const projectPhrase = projects.length === 0
 ```js
 // Keeps the URL in sync with the current filters so the view is linkable/
 // bookmarkable. Deliberately its own cell, separate from the one declaring
-// the dateRange Mutable — merging them would make this effect's dependency
-// on poolPattern re-run that cell too, recreating (and resetting) the
-// Mutable on every keystroke.
+// the date-range control — merging them would make this effect's dependency
+// on poolPattern re-run that cell too, rebuilding the control (and losing the
+// selected range) on every keystroke.
 {
   const params = new URLSearchParams(window.location.search);
   const set = (key, val) => (val ? params.set(key, val) : params.delete(key));
@@ -405,9 +381,8 @@ const projectPhrase = projects.length === 0
 ```
 
 ```js
-// Defaults to the full available window until the user brushes the first
-// chart. dateRange is trusted as already-ordered/in-range since it's only
-// ever set from the brush's own (already-clamped) invert() output.
+// Null dateRange means the full window. It's already ordered, whole-day and
+// in-window — the control normalizes every path that sets it.
 const [rangeStart, rangeEnd] = dateRange ? [isoDate(dateRange[0]), isoDate(dateRange[1])] : [minDay, maxDay];
 
 function projectFilterOf(r) {
@@ -549,9 +524,7 @@ const breakdownLabel = BREAKDOWN_LABELS[breakdown].toLowerCase();
 ```
 
 ```js
-// Doubles as the date-range picker: dragging draws a d3 brush over it, and
-// the resulting pixel selection is inverted through the plot's own x scale
-// into dates, which get pushed into the dateRange Mutable.
+// Doubles as the date-range picker — see attachDateBrush.
 function usageOverTimeChart({width} = {}) {
   if (!dailyTotals.length) return htl.html`<p class="muted">No data for this filter.</p>`;
   // rectY's interval-based binning needs an actual Date, not an ISO string —
@@ -571,30 +544,7 @@ function usageOverTimeChart({width} = {}) {
     ]
   });
 
-  // Plot's color legend renders its own small swatch <svg>s nested inside a
-  // wrapper div — querySelector("svg") would grab one of those (depth-first,
-  // and the legend comes before the chart in DOM order) instead of the main
-  // plot canvas, so scope to a direct child only.
-  const svg = plot.tagName === "svg" ? plot : plot.querySelector(":scope > svg");
-  const xScale = plot.scale("x");
-  const [x0, x1] = xScale.range;
-  const plotHeight = +svg.getAttribute("height") || height;
-
-  const brush = d3.brushX()
-    .extent([[x0, 0], [x1, plotHeight]])
-    .on("end", (event) => {
-      // Ignore programmatic moves (sourceEvent is null) — otherwise
-      // restoring the visual selection below would re-trigger this handler.
-      if (!event.sourceEvent) return;
-      setDateRange(event.selection ? event.selection.map(xScale.invert) : null);
-    });
-
-  const gBrush = d3.select(svg).append("g").attr("class", "date-brush").call(brush);
-  if (dateRange) {
-    gBrush.call(brush.move, dateRange.map(xScale.apply));
-  }
-
-  return plot;
+  return attachDateBrush(plot, {height, dateRange, setDateRange});
 }
 ```
 
