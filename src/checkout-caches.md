@@ -16,6 +16,10 @@ clone. Each task falls into one of three states, from best to worst:
 (`nopull` + `pull`). See `data/_queries.yaml` for which query backs this page.
 
 ```js
+import {isoDate, dateRangeControl, attachDateBrush} from "./components/date-range.js";
+```
+
+```js
 const rows = (await FileAttachment("data/checkout-caches-workerpool.parquet").parquet()).toArray();
 ```
 
@@ -112,16 +116,6 @@ full-clone chart to restrict the date range; click it to clear.
   color: var(--theme-foreground-muted, #888);
   white-space: nowrap;
 }
-.filter-daterange-value-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: nowrap;
-}
-.filter-daterange-value {
-  font-size: 0.9rem;
-  white-space: nowrap;
-}
 .filter-reset {
   font: inherit;
   font-size: 0.8rem;
@@ -157,18 +151,17 @@ const project = Generators.input(projectInput);
 const poolInput = Inputs.text({label: "Worker pool (regex)", placeholder: "e.g. gecko-.*win", value: urlParams.get("pool") ?? "", submit: true});
 const poolPattern = Generators.input(poolInput);
 
-function isoDate(d) {
-  return d.toISOString().slice(0, 10);
-}
-function initialDateRange() {
-  const from = urlParams.get("from");
-  const to = urlParams.get("to");
-  if (!from || !to || from > to || from < minDay || to > maxDay) return null;
-  return [new Date(`${from}T00:00:00Z`), new Date(`${to}T00:00:00Z`)];
-}
-const dateRange = Mutable(initialDateRange());
+// Kept free of reactive dependencies: re-running this cell would rebuild the
+// control, losing the typed range and the user's focus.
+const dateRangeInput = dateRangeControl({
+  minDay,
+  maxDay,
+  from: urlParams.get("from"),
+  to: urlParams.get("to")
+});
+const dateRange = Generators.input(dateRangeInput);
 function setDateRange(v) {
-  dateRange.value = v;
+  dateRangeInput.setRange(v);
 }
 ```
 
@@ -177,19 +170,16 @@ function setDateRange(v) {
   <div>${poolInput}</div>
   <div class="filter-daterange">
     <span class="filter-daterange-label">Date range</span>
-    <div class="filter-daterange-value-row">
-      <span class="filter-daterange-value">${dateRange ? `${isoDate(dateRange[0])} – ${isoDate(dateRange[1])}` : `${minDay} – ${maxDay}`}</span>
-      ${htl.html`<button class="filter-reset" disabled=${!dateRange} onclick=${() => setDateRange(null)}>Reset</button>`}
-    </div>
+    ${dateRangeInput}
   </div>
 </div>
 
 ```js
 // Keeps the URL in sync with the current filters so the view is linkable/
 // bookmarkable. Deliberately its own cell, separate from the one declaring
-// the dateRange Mutable — merging them would make this effect's dependency
-// on poolPattern/project re-run that cell too, recreating (and resetting) the
-// Mutable on every keystroke.
+// the date-range control — merging them would make this effect's dependency
+// on poolPattern/project re-run that cell too, rebuilding the control (and
+// losing the selected range) on every keystroke.
 {
   const params = new URLSearchParams(window.location.search);
   const set = (key, val) => (val ? params.set(key, val) : params.delete(key));
@@ -203,9 +193,8 @@ function setDateRange(v) {
 ```
 
 ```js
-// Defaults to the full available window until the user brushes the
-// full-clone chart. dateRange is trusted as already-ordered/in-range since
-// it's only ever set from the brush's own (already-clamped) invert() output.
+// Null dateRange means the full window. It's already ordered, whole-day and
+// in-window — the control normalizes every path that sets it.
 const [rangeStart, rangeEnd] = dateRange
   ? [isoDate(dateRange[0]), isoDate(dateRange[1])]
   : [minDay, maxDay];
@@ -258,11 +247,8 @@ const overallHitRate = overall.tasks > 0 ? (overall.nopull + overall.pull) / ove
 </div>
 
 ```js
-// Doubles as the date-range picker: dragging draws a d3 brush over it, and
-// the resulting pixel selection is inverted through the plot's own x scale
-// into dates, which get pushed into the dateRange Mutable. It's built from
-// dailyTotals (pool filtered, but NOT date filtered) so the full window
-// stays visible — and brushable — no matter what date range is selected.
+// Built from dailyTotals (pool filtered, but NOT date filtered) so the full
+// window stays brushable no matter how narrow the selected range is.
 function missTrendChart({width} = {}) {
   if (!dailyTotals.length) return htl.html`<p class="muted">No data for this filter.</p>`;
   const rows2 = dailyTotals.map((d) => ({...d, day: new Date(d.day), missRate: d.tasks > 0 ? d.clone / d.tasks : null}));
@@ -279,30 +265,7 @@ function missTrendChart({width} = {}) {
     ]
   });
 
-  // Plot's color legend renders its own small swatch <svg>s nested inside a
-  // wrapper div — querySelector("svg") would grab one of those (depth-first,
-  // and the legend comes before the chart in DOM order) instead of the main
-  // plot canvas, so scope to a direct child only.
-  const svg = plot.tagName === "svg" ? plot : plot.querySelector(":scope > svg");
-  const xScale = plot.scale("x");
-  const [x0, x1] = xScale.range;
-  const plotHeight = +svg.getAttribute("height") || height;
-
-  const brush = d3.brushX()
-    .extent([[x0, 0], [x1, plotHeight]])
-    .on("end", (event) => {
-      // Ignore programmatic moves (sourceEvent is null) — otherwise
-      // restoring the visual selection below would re-trigger this handler.
-      if (!event.sourceEvent) return;
-      setDateRange(event.selection ? event.selection.map(xScale.invert) : null);
-    });
-
-  const gBrush = d3.select(svg).append("g").attr("class", "date-brush").call(brush);
-  if (dateRange) {
-    gBrush.call(brush.move, dateRange.map(xScale.apply));
-  }
-
-  return plot;
+  return attachDateBrush(plot, {height, dateRange, setDateRange});
 }
 ```
 
