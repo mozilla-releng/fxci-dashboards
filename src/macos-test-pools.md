@@ -52,6 +52,10 @@ today is still accumulating. See `data/_queries.yaml` for the queries that
 back this page.
 
 ```js
+import {isoDate, dateRangeControl, attachDateBrush} from "./components/date-range.js";
+```
+
+```js
 const rows = (await FileAttachment("data/macos-test-pools-usage.parquet").parquet()).toArray();
 ```
 
@@ -239,16 +243,6 @@ chart to restrict the date range; click it to clear.
   color: var(--theme-foreground-muted, #888);
   white-space: nowrap;
 }
-.filter-daterange-value-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: nowrap;
-}
-.filter-daterange-value {
-  font-size: 0.9rem;
-  white-space: nowrap;
-}
 .filter-reset {
   font: inherit;
   font-size: 0.8rem;
@@ -308,40 +302,17 @@ const urlGroup = urlParams.get("group");
 const groupInput = Inputs.select(GROUPINGS, {label: "Group by", value: GROUPINGS.includes(urlGroup) ? urlGroup : "Pool"});
 const grouping = Generators.input(groupInput);
 
-function isoDate(d) {
-  return d.toISOString().slice(0, 10);
-}
-// Parsed strictly rather than compared as strings: a plausible-looking
-// ?from=2026-06-1 passes a lexical range check but yields an Invalid Date,
-// and isoDate() then throws out of the cell that derives every filtered
-// dataset on the page — taking all the stats, charts and tables with it.
-const DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-function parseDay(s) {
-  if (!s || !DAY_PATTERN.test(s)) return null;
-  const d = new Date(`${s}T00:00:00Z`);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-const windowStart = parseDay(minDay);
-const windowEnd = parseDay(maxDay);
-function clampDay(d) {
-  return d < windowStart ? windowStart : d > windowEnd ? windowEnd : d;
-}
-function initialDateRange() {
-  // Out-of-window edges are clamped, not rejected: brushing to the right edge
-  // of the chart yields a `to` one day past maxDay (rectY's "day" interval
-  // extends the x domain past the last bar), and throwing that away would
-  // silently drop the very range a shared link was carrying.
-  const from = parseDay(urlParams.get("from"));
-  const to = parseDay(urlParams.get("to"));
-  if (!from || !to || from > to || to < windowStart || from > windowEnd) return null;
-  return [clampDay(from), clampDay(to)];
-}
-const dateRange = Mutable(initialDateRange());
+// Kept free of reactive dependencies: re-running this cell would rebuild the
+// control, losing the typed range and the user's focus.
+const dateRangeInput = dateRangeControl({
+  minDay,
+  maxDay,
+  from: urlParams.get("from"),
+  to: urlParams.get("to")
+});
+const dateRange = Generators.input(dateRangeInput);
 function setDateRange(v) {
-  // Clamped on the way in too — this is the only place brush output enters the
-  // page, so it's where the label, the URL and the row filter are kept in
-  // agreement with the actual data window.
-  dateRange.value = v ? [clampDay(v[0]), clampDay(v[1])] : null;
+  dateRangeInput.setRange(v);
 }
 ```
 
@@ -350,19 +321,16 @@ function setDateRange(v) {
   <div>${groupInput}</div>
   <div class="filter-daterange">
     <span class="filter-daterange-label">Date range</span>
-    <div class="filter-daterange-value-row">
-      <span class="filter-daterange-value">${dateRange ? `${isoDate(dateRange[0])} – ${isoDate(dateRange[1])}` : `${minDay} – ${maxDay}`}</span>
-      ${htl.html`<button class="filter-reset" disabled=${!dateRange} onclick=${() => setDateRange(null)}>Reset</button>`}
-    </div>
+    ${dateRangeInput}
   </div>
 </div>
 
 ```js
 // Keeps the URL in sync with the current filters so the view is linkable/
 // bookmarkable. Deliberately its own cell, separate from the one declaring
-// the dateRange Mutable — merging them would make this effect's dependency
-// on the pool/grouping inputs re-run that cell too, recreating (and
-// resetting) the Mutable on every filter change.
+// the date-range control — merging them would make this effect's dependency
+// on the pool/grouping inputs re-run that cell too, rebuilding the control
+// (and losing the selected range) on every filter change.
 {
   const params = new URLSearchParams(window.location.search);
   const set = (key, val) => (val ? params.set(key, val) : params.delete(key));
@@ -380,9 +348,8 @@ function setDateRange(v) {
 ```
 
 ```js
-// Defaults to the full available window until the user brushes the task-runs
-// chart. dateRange is trusted as already-ordered/in-range since it's only
-// ever set from the brush's own (already-clamped) invert() output.
+// Null dateRange means the full window. It's already ordered, whole-day and
+// in-window — the control normalizes every path that sets it.
 const [rangeStart, rangeEnd] = dateRange
   ? [isoDate(dateRange[0]), isoDate(dateRange[1])]
   : [minDay, maxDay];
@@ -471,11 +438,8 @@ ${totals.unresolved > 0 ? htl.html`<p class="muted">Heads up: ${fmtNumber(totals
 ${implausible.length ? htl.html`<p class="muted"><strong>Data check:</strong> ${fmtNumber(implausible.length)} pool-day(s) in this range exceed the physical ceiling of machines &times; 24h — worst is ${poolLabel(implausible[0].worker_pool)} on ${implausible[0].day} at ${fmtPercent(implausible[0].utilization)}. That means runs are being counted more than once upstream, so treat every number here as inflated until it's fixed.</p>` : ""}
 
 ```js
-// Doubles as the date-range picker: dragging draws a d3 brush over it, and
-// the resulting pixel selection is inverted through the plot's own x scale
-// into dates, which get pushed into the dateRange Mutable. Built from
-// dailyAll (pool filtered, but NOT date filtered) so the full window stays
-// visible — and brushable — no matter what date range is selected.
+// Built from dailyAll (pool filtered, but NOT date filtered) so the full
+// window stays brushable no matter how narrow the selected range is.
 function tasksPerDayChart({width} = {}) {
   if (!dailyAll.length) return htl.html`<p class="muted">No data for this filter.</p>`;
   // rectY's interval-based binning needs an actual Date, not an ISO string —
@@ -495,30 +459,7 @@ function tasksPerDayChart({width} = {}) {
     ]
   });
 
-  // Plot's color legend renders its own small swatch <svg>s nested inside a
-  // wrapper div — querySelector("svg") would grab one of those (depth-first,
-  // and the legend comes before the chart in DOM order) instead of the main
-  // plot canvas, so scope to a direct child only.
-  const svg = plot.tagName === "svg" ? plot : plot.querySelector(":scope > svg");
-  const xScale = plot.scale("x");
-  const [x0, x1] = xScale.range;
-  const plotHeight = +svg.getAttribute("height") || height;
-
-  const brush = d3.brushX()
-    .extent([[x0, 0], [x1, plotHeight]])
-    .on("end", (event) => {
-      // Ignore programmatic moves (sourceEvent is null) — otherwise
-      // restoring the visual selection below would re-trigger this handler.
-      if (!event.sourceEvent) return;
-      setDateRange(event.selection ? event.selection.map(xScale.invert) : null);
-    });
-
-  const gBrush = d3.select(svg).append("g").attr("class", "date-brush").call(brush);
-  if (dateRange) {
-    gBrush.call(brush.move, dateRange.map(xScale.apply));
-  }
-
-  return plot;
+  return attachDateBrush(plot, {height, dateRange, setDateRange});
 }
 ```
 
