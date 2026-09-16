@@ -11,6 +11,10 @@ Snapshot taken at build time from STMO — see `data/_queries.yaml` for which
 queries back this page.
 
 ```js
+import {isoDate, dateRangeControl, attachDateBrush} from "./components/date-range.js";
+```
+
+```js
 const trend = (await FileAttachment("data/gecko2github-trend.parquet").parquet()).toArray();
 const workerPool = (await FileAttachment("data/gecko2github-workerpool.parquet").parquet()).toArray();
 const gitTasks = (await FileAttachment("data/gecko2github-gittasks.parquet").parquet()).toArray();
@@ -78,16 +82,6 @@ below to restrict the date range; click it to clear.
   color: var(--theme-foreground-muted, #888);
   white-space: nowrap;
 }
-.filter-daterange-value-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: nowrap;
-}
-.filter-daterange-value {
-  font-size: 0.9rem;
-  white-space: nowrap;
-}
 .filter-reset {
   font: inherit;
   font-size: 0.8rem;
@@ -143,25 +137,17 @@ const project = Generators.input(projectInput);
 const kind = Generators.input(kindInput);
 const os = Generators.input(osInput);
 
-// Holds the brush-selected [from, to] Dates, or null for "full range". A
-// Mutable (rather than a view()-bound input) so setting it from the brush
-// handler doesn't require the chart itself to be a form input.
-// UTC, not local time — matches the "utc"-typed x scale on the brush chart
-// (whose bars are keyed off plain "YYYY-MM-DD" strings, parsed as UTC
-// midnight) so a round trip through the URL lands on the same day
-// regardless of the viewer's timezone.
-function isoDate(d) {
-  return d.toISOString().slice(0, 10);
-}
-function initialDateRange() {
-  const from = urlParams.get("from");
-  const to = urlParams.get("to");
-  if (!from || !to || from > to || from < minDay || to > maxDay) return null;
-  return [new Date(`${from}T00:00:00Z`), new Date(`${to}T00:00:00Z`)];
-}
-const dateRange = Mutable(initialDateRange());
+// Kept free of reactive dependencies: re-running this cell would rebuild the
+// control, losing the typed range and the user's focus.
+const dateRangeInput = dateRangeControl({
+  minDay,
+  maxDay,
+  from: urlParams.get("from"),
+  to: urlParams.get("to")
+});
+const dateRange = Generators.input(dateRangeInput);
 function setDateRange(v) {
-  dateRange.value = v;
+  dateRangeInput.setRange(v);
 }
 ```
 
@@ -171,19 +157,16 @@ function setDateRange(v) {
   <div>${osInput}</div>
   <div class="filter-daterange">
     <span class="filter-daterange-label">Date range</span>
-    <div class="filter-daterange-value-row">
-      <span class="filter-daterange-value">${dateRange ? `${isoDate(dateRange[0])} – ${isoDate(dateRange[1])}` : `${minDay} – ${maxDay}`}</span>
-      ${htl.html`<button class="filter-reset" disabled=${!dateRange} onclick=${() => setDateRange(null)}>Reset</button>`}
-    </div>
+    ${dateRangeInput}
   </div>
 </div>
 
 ```js
 // Keeps the URL in sync with the current filters so the view is linkable/
 // bookmarkable. Deliberately its own cell, separate from the one declaring
-// the dateRange Mutable — merging them would make this effect's dependency
-// on project/kind/os re-run that cell too, recreating (and resetting) the
-// Mutable on every filter change.
+// the date-range control — merging them would make this effect's dependency
+// on project/kind/os re-run that cell too, rebuilding the control (and losing
+// the selected range) on every filter change.
 {
   const params = new URLSearchParams(window.location.search);
   const set = (key, val) => (val ? params.set(key, val) : params.delete(key));
@@ -198,9 +181,8 @@ function setDateRange(v) {
 ```
 
 ```js
-// Defaults to the full available window until the user brushes the volume
-// chart. dateRange is trusted as already-ordered/in-range since it's only
-// ever set from the brush's own (already-clamped) invert() output.
+// Null dateRange means the full window. It's already ordered, whole-day and
+// in-window — the control normalizes every path that sets it.
 const [rangeStart, rangeEnd] = dateRange
   ? [isoDate(dateRange[0]), isoDate(dateRange[1])]
   : [minDay, maxDay];
@@ -339,11 +321,8 @@ function rangeTotal(type, field) {
 ```js
 const pkoAggregatedTrend = aggregateTrend(pkoTrend);
 
-// Doubles as the date-range picker: dragging draws a d3 brush over it, and
-// the resulting pixel selection is inverted through the plot's own x scale
-// into dates, which get pushed into the dateRange Mutable. It's built from
-// pkoAggregatedTrend (project/kind/os filtered, but NOT date filtered) so
-// the full window stays visible — and brushable — no matter what's selected.
+// Built from pkoAggregatedTrend (project/kind/os filtered, but NOT date
+// filtered) so the full window stays brushable no matter what's selected.
 function dateRangePicker({width} = {}) {
   // rectY's interval-based binning needs an actual Date, not an ISO string —
   // passing a string silently collapses every day into a single bin.
@@ -362,30 +341,7 @@ function dateRangePicker({width} = {}) {
     ]
   });
 
-  // Plot's color legend renders its own small swatch <svg>s nested inside a
-  // wrapper div — querySelector("svg") would grab one of those (depth-first,
-  // and the legend comes before the chart in DOM order) instead of the main
-  // plot canvas, so scope to a direct child only.
-  const svg = plot.tagName === "svg" ? plot : plot.querySelector(":scope > svg");
-  const xScale = plot.scale("x");
-  const [x0, x1] = xScale.range;
-  const plotHeight = +svg.getAttribute("height") || height;
-
-  const brush = d3.brushX()
-    .extent([[x0, 0], [x1, plotHeight]])
-    .on("end", (event) => {
-      // Ignore programmatic moves (sourceEvent is null) — otherwise
-      // restoring the visual selection below would re-trigger this handler.
-      if (!event.sourceEvent) return;
-      setDateRange(event.selection ? event.selection.map(xScale.invert) : null);
-    });
-
-  const gBrush = d3.select(svg).append("g").attr("class", "date-brush").call(brush);
-  if (dateRange) {
-    gBrush.call(brush.move, dateRange.map(xScale.apply));
-  }
-
-  return plot;
+  return attachDateBrush(plot, {height, dateRange, setDateRange});
 }
 ```
 
