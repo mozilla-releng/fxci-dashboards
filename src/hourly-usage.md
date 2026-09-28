@@ -8,7 +8,7 @@ toc: false
 Which projects, worker pools and users are consuming the most hours.
 
 ```js
-import {isoDate, dateRangeControl, attachDateBrush} from "./components/date-range.js";
+import {isoDate, dateRangeControl} from "./components/date-range.js";
 ```
 
 ```js
@@ -301,9 +301,6 @@ const dateRangeInput = dateRangeControl({
   to: urlParams.get("to")
 });
 const dateRange = Generators.input(dateRangeInput);
-function setDateRange(v) {
-  dateRangeInput.setRange(v);
-}
 
 // The breakdown value doubles as the row property name ("project",
 // "worker_pool", or "created_for_user") so every chart below can key
@@ -389,8 +386,8 @@ function projectFilterOf(r) {
   return projects.length === 0 || projects.includes(r.project);
 }
 
-// Picker-chart inputs are pool/project-filtered only, not date-filtered, so
-// there's always something to brush even after the range has been narrowed.
+// Pool/project-filtered only, not date-filtered: dailyScale builds its
+// colours from this full window so they stay stable as the range narrows.
 const userPoolRows = userRows.filter((r) => (!poolRegex || poolRegex.test(r.worker_pool)) && projectFilterOf(r));
 const userRangeRows = userPoolRows.filter((r) => r.day >= rangeStart && r.day <= rangeEnd);
 
@@ -502,10 +499,6 @@ function topBucketColorScale(rows, keyFn) {
 ```
 
 ```js
-// pool/project-filtered but NOT date-filtered, so the chart always shows
-// (and can brush) the full window regardless of the selected range.
-// Bucketed against the full (undated) window too, so the "Other" grouping
-// doesn't reshuffle as the user drags the brush.
 function totalsPerDayByKey(inputRows, keyFn, bucket, dayBucket) {
   const acc = new Map();
   for (const r of inputRows) {
@@ -518,13 +511,15 @@ function totalsPerDayByKey(inputRows, keyFn, bucket, dayBucket) {
   }
   return [...acc.values()].sort((a, b) => a.day.localeCompare(b.day));
 }
+// Built from the full (undated) userPoolRows so colours — and the "Other"
+// bucket cut-off — stay stable as the date range narrows. dailyTotals reuses
+// that same bucket function but sums over the date-filtered rows.
 const dailyScale = topBucketColorScale(userPoolRows, (r) => r[breakdown]);
-const dailyTotals = totalsPerDayByKey(userPoolRows, (r) => r[breakdown], dailyScale.bucket, dayBucketFn(groupBy));
+const dailyTotals = totalsPerDayByKey(userRangeRows, (r) => r[breakdown], dailyScale.bucket, dayBucketFn(groupBy));
 const breakdownLabel = BREAKDOWN_LABELS[breakdown].toLowerCase();
 ```
 
 ```js
-// Doubles as the date-range picker — see attachDateBrush.
 function usageOverTimeChart({width} = {}) {
   if (!dailyTotals.length) return htl.html`<p class="muted">No data for this filter.</p>`;
   // rectY's interval-based binning needs an actual Date, not an ISO string —
@@ -532,7 +527,7 @@ function usageOverTimeChart({width} = {}) {
   const data = dailyTotals.map((d) => ({...d, day: new Date(d.day)}));
   const height = 300;
   const plot = Plot.plot({
-    title: `Running hours per ${groupBy} by ${breakdownLabel} — drag to select a date range, click to clear`,
+    title: `Running hours per ${groupBy} by ${breakdownLabel}`,
     width,
     height,
     x: {type: "utc", label: "Date"},
@@ -544,7 +539,7 @@ function usageOverTimeChart({width} = {}) {
     ]
   });
 
-  return attachDateBrush(plot, {height, dateRange, setDateRange});
+  return plot;
 }
 ```
 
