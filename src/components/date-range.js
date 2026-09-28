@@ -1,6 +1,5 @@
-// UTC throughout: the brush charts' x scale and every downstream row filter
-// key off "YYYY-MM-DD" strings parsed as UTC midnight.
-import * as d3 from "npm:d3";
+// UTC throughout: every downstream row filter keys off "YYYY-MM-DD" strings
+// parsed as UTC midnight.
 
 const MS_PER_DAY = 86400000;
 const DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -103,7 +102,7 @@ export function dateRangeControl({minDay, maxDay, from, to, presets = [7, 30, 90
     a = clampToWindow(a);
     b = clampToWindow(b);
     // A whole-window range *is* the default, so collapse it: an edge-to-edge
-    // brush and the All preset then produce identical state.
+    // ?from=/?to= and the All preset then produce identical state.
     return +a === +windowStart && +b === +windowEnd ? null : [a, b];
   }
 
@@ -122,7 +121,7 @@ export function dateRangeControl({minDay, maxDay, from, to, presets = [7, 30, 90
   form.addEventListener("submit", (event) => event.preventDefault());
 
   // No child may get a `name`: the form's legacy named getter would shadow
-  // the .value / .setRange expandos this contract depends on.
+  // the .value expando this contract depends on.
   function dateBox(label) {
     const el = document.createElement("input");
     el.type = "date";
@@ -208,41 +207,8 @@ export function dateRangeControl({minDay, maxDay, from, to, presets = [7, 30, 90
     });
   }
 
-  form.setRange = (v) => commit(normalize(v));
-
   form.append(row, presetRow);
   form.value = parseInitialRange();
   paint(form.value);
   return form;
-}
-
-export function attachDateBrush(plot, {height, dateRange, setDateRange}) {
-  // Scoped to a direct child: Plot's legend renders its own swatch <svg>s
-  // earlier in DOM order, so a plain querySelector("svg") grabs one of those.
-  const svg = plot.tagName === "svg" ? plot : plot.querySelector(":scope > svg");
-  const xScale = plot.scale("x");
-  if (!svg || !xScale) return plot;
-
-  const [x0, x1] = xScale.range;
-  const plotHeight = +svg.getAttribute("height") || height;
-
-  const brush = d3
-    .brushX()
-    .extent([
-      [x0, 0],
-      [x1, plotHeight]
-    ])
-    .on("end", (event) => {
-      // Programmatic moves have no sourceEvent; restoring the selection below
-      // would otherwise re-enter this handler.
-      if (!event.sourceEvent) return;
-      setDateRange(event.selection ? event.selection.map(xScale.invert) : null);
-    });
-
-  const gBrush = d3.select(svg).append("g").attr("class", "date-brush").call(brush);
-  if (dateRange) {
-    gBrush.call(brush.move, dateRange.map(xScale.apply));
-  }
-
-  return plot;
 }
