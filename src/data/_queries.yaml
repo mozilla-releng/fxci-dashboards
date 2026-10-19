@@ -44,7 +44,7 @@
   secretEnv: REDASH_API_KEY_MACOS_TEST_POOLS_PROJECTS
 
 - name: usage
-  title: "CI Usage: daily task runs, machine-hours, pending time and pushes by user and project"
+  title: "CI Usage: daily task runs, machine-hours, task-attributed cost, pending time and pushes by user and project"
   queryId: 126750
   secretEnv: REDASH_API_KEY_USAGE
 

@@ -28,6 +28,9 @@ function fmtNumber(v) {
 function fmtDecimal(v) {
   return v == null ? "—" : v.toLocaleString("en-US", {maximumFractionDigits: 1});
 }
+function fmtDollars(v) {
+  return v == null ? "—" : `$${Math.round(v).toLocaleString("en-US")}`;
+}
 function fmtPercent(v) {
   return v == null ? "—" : `${(v * 100).toFixed(1)}%`;
 }
@@ -407,6 +410,8 @@ const selectedProjectPoolRangeRows = poolRangeRows.filter(projectFilterOf);
 
 ```js
 const totalTaskHours = userRangeRows.reduce((a, r) => a + (r.task_hours ?? 0), 0);
+const totalCost = userRangeRows.reduce((a, r) => a + (r.cost ?? 0), 0);
+const costedHours = userRangeRows.reduce((a, r) => a + (r.costed_hours ?? 0), 0);
 const totalTasks = userRangeRows.reduce((a, r) => a + (r.tasks ?? 0), 0);
 const matchedHours = poolRangeRows.reduce((a, r) => a + (r.task_hours ?? 0), 0);
 const projectShare = matchedHours > 0 ? selectedProjectPoolRangeRows.reduce((a, r) => a + (r.task_hours ?? 0), 0) / matchedHours : null;
@@ -424,7 +429,12 @@ const medianUserHours = userHoursSorted.length
   : null;
 ```
 
-<div class="grid grid-cols-4">
+<div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
+  <div class="card">
+    <h2>Cost</h2>
+    <span class="big">${fmtDollars(totalCost)}</span>
+    <span class="muted">${fmtPercent(totalTaskHours > 0 ? costedHours / totalTaskHours : null)} of running hours have cost data</span>
+  </div>
   <div class="card">
     <h2>Running hours</h2>
     <span class="big">${fmtNumber(totalTaskHours)}</span>
@@ -568,11 +578,13 @@ function groupedUsageSummary(inputRows, keyFn) {
       breakdown: new Map(),
       tasks: 0,
       taskHours: 0,
+      cost: 0,
       taskGroups: 0,
       retryRuns: 0
     };
     a.tasks += r.tasks ?? 0;
     a.taskHours += r.task_hours ?? 0;
+    a.cost += r.cost ?? 0;
     a.taskGroups += r.pushes ?? 0;
     a.retryRuns += r.retry_runs ?? 0;
     a.breakdown.set(r[breakdown], (a.breakdown.get(r[breakdown]) ?? 0) + (r.task_hours ?? 0));
@@ -584,6 +596,7 @@ function groupedUsageSummary(inputRows, keyFn) {
       key: a.key,
       tasks: a.tasks,
       taskHours: a.taskHours,
+      cost: a.cost,
       taskGroups: a.taskGroups,
       hoursPerTaskGroup: a.taskGroups > 0 ? a.taskHours / a.taskGroups : null,
       tasksPerTaskGroup: a.taskGroups > 0 ? a.tasks / a.taskGroups : null,
@@ -661,11 +674,12 @@ function topNUsageChart(topRows, bars, {namePlural, keyField, width} = {}) {
 
 function usageTable(rows, keyHeader) {
   return Inputs.table(rows, {
-    columns: ["key", "tasks", "taskHours", "share", "taskGroups", "hoursPerTaskGroup", "tasksPerTaskGroup"],
+    columns: ["key", "tasks", "taskHours", "cost", "share", "taskGroups", "hoursPerTaskGroup", "tasksPerTaskGroup"],
     header: {
       key: keyHeader,
       tasks: "Task runs",
       taskHours: "Running hours",
+      cost: "Cost",
       share: "Share of hours",
       taskGroups: "Task groups",
       hoursPerTaskGroup: "Hours / task group",
@@ -674,6 +688,7 @@ function usageTable(rows, keyHeader) {
     format: {
       tasks: fmtNumber,
       taskHours: fmtNumber,
+      cost: fmtDollars,
       share: fmtPercent,
       taskGroups: fmtNumber,
       hoursPerTaskGroup: fmtDecimal,
@@ -748,5 +763,7 @@ const unknownUserHours = userRangeRows
   .filter((r) => r.created_for_user === "(unknown)")
   .reduce((a, r) => a + (r.task_hours ?? 0), 0);
 ```
+
+<p class="muted">Cost is from <code>fxci.task_run_costs</code>: each run's share of its worker's cloud bill. It excludes worker idle time, and hardware pools and some Azure runs have no cost data.</p>
 
 ${untaggedProjectHours > 0 || unknownUserHours > 0 ? htl.html`<p class="muted">Work that couldn't be fully attributed in this range: ${fmtNumber(untaggedProjectHours)} running hour(s) with no project tag, ${fmtNumber(unknownUserHours)} ${projectPhrase} running hour(s) with no created_for_user. Shown rather than dropped, so totals above still reconcile.</p>` : ""}
