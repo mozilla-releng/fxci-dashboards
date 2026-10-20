@@ -16,7 +16,7 @@ clone. Each task falls into one of three states, from best to worst:
 (`nopull` + `pull`). See `data/_queries.yaml` for which query backs this page.
 
 ```js
-import {isoDate, dateRangeControl, attachDateBrush} from "./components/date-range.js";
+import {isoDate, dateRangeControl} from "./components/date-range.js";
 ```
 
 ```js
@@ -67,8 +67,7 @@ function aggregateByDay(inputRows) {
 }
 ```
 
-Filters apply to every chart, stat, and the table below. Drag on the
-full-clone chart to restrict the date range; click it to clear.
+Filters apply to every chart, stat, and the table below.
 
 <style>
 .filter-bar {
@@ -160,9 +159,6 @@ const dateRangeInput = dateRangeControl({
   to: urlParams.get("to")
 });
 const dateRange = Generators.input(dateRangeInput);
-function setDateRange(v) {
-  dateRangeInput.setRange(v);
-}
 ```
 
 <div class="filter-bar">
@@ -213,13 +209,9 @@ if (poolPattern) {
   }
 }
 
-// The picker chart deliberately filters by project/pool only, not by date —
-// it needs to keep showing the full window so there's always something to
-// brush, even after the date range has been narrowed.
 const poolRows = rows.filter(
   (r) => (project === "All" || r.project === project) && (!poolRegex || poolRegex.test(r.worker_pool))
 );
-const dailyTotals = aggregateByDay(poolRows);
 
 const filteredRows = poolRows.filter((r) => r.day == null || (r.day >= rangeStart && r.day <= rangeEnd));
 const pools = aggregateByPool(filteredRows);
@@ -247,14 +239,13 @@ const overallHitRate = overall.tasks > 0 ? (overall.nopull + overall.pull) / ove
 </div>
 
 ```js
-// Built from dailyTotals (pool filtered, but NOT date filtered) so the full
-// window stays brushable no matter how narrow the selected range is.
 function missTrendChart({width} = {}) {
-  if (!dailyTotals.length) return htl.html`<p class="muted">No data for this filter.</p>`;
-  const rows2 = dailyTotals.map((d) => ({...d, day: new Date(d.day), missRate: d.tasks > 0 ? d.clone / d.tasks : null}));
+  const daily = aggregateByDay(filteredRows);
+  if (!daily.length) return htl.html`<p class="muted">No data for this filter.</p>`;
+  const rows2 = daily.map((d) => ({...d, day: new Date(d.day), missRate: d.tasks > 0 ? d.clone / d.tasks : null}));
   const height = 260;
   const plot = Plot.plot({
-    title: "Full-clone (cache miss) rate over time — drag to select a date range, click to clear",
+    title: "Full-clone (cache miss) rate over time",
     width,
     height,
     x: {type: "utc", label: "Date"},
@@ -265,7 +256,7 @@ function missTrendChart({width} = {}) {
     ]
   });
 
-  return attachDateBrush(plot, {height, dateRange, setDateRange});
+  return plot;
 }
 ```
 

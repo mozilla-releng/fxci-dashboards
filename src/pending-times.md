@@ -8,7 +8,7 @@ toc: false
 How long Firefox-CI tasks wait for a worker before they start.
 
 ```js
-import {isoDate, dateRangeControl, attachDateBrush} from "./components/date-range.js";
+import {isoDate, dateRangeControl} from "./components/date-range.js";
 ```
 
 ```js
@@ -594,9 +594,6 @@ const dateRangeInput = dateRangeControl({
   to: urlParams.get("to")
 });
 const dateRange = Generators.input(dateRangeInput);
-function setDateRange(v) {
-  dateRangeInput.setRange(v);
-}
 
 const BREAKDOWN_OPTIONS = ["worker_pool", "project", "priority"];
 const BREAKDOWN_LABELS = {worker_pool: "Worker Pool", project: "Project", priority: "Priority"};
@@ -728,9 +725,8 @@ const passFilters = (r) =>
   (projectSet.size === 0 || projectSet.has(r.project)) &&
   (prioritySet.size === 0 || prioritySet.has(r.priority));
 
-// The wait-profile chart's inputs are filtered but NOT date-filtered, so it
-// always shows (and can brush) the full window regardless of the selected
-// range.
+// Filtered but NOT date-filtered: over30mChart below reads scopeRows
+// directly, so it ignores the date range.
 const scopeRows = rows.filter(passFilters);
 const rangeRows = scopeRows.filter((r) => r.day >= rangeStart && r.day <= rangeEnd);
 const daysInRange = new Set(rangeRows.map((r) => r.day)).size;
@@ -909,10 +905,8 @@ const tableRows = breakdownSorted.map((a) => ({...a, deltaP90: halfDeltas.get(a.
 </div>
 
 ```js
-// Built from scopeRows (filtered, but NOT date filtered) so the full window
-// stays brushable no matter how narrow the selected range is.
 function waitProfileChart({width} = {}) {
-  const dayAggs = aggregateByDay(scopeRows, () => "all", waitProfileDayBucket).map(deriveAgg);
+  const dayAggs = aggregateByDay(rangeRows, () => "all", waitProfileDayBucket).map(deriveAgg);
   const data = dayAggs.flatMap((a) =>
     BUCKET_LABELS.map((bucket, i) => ({
       day: new Date(a.day),
@@ -960,13 +954,13 @@ function waitProfileChart({width} = {}) {
     ]
   });
 
-  return attachDateBrush(plot, {height, dateRange, setDateRange});
+  return plot;
 }
 ```
 
 <div class="grid grid-cols-1">
   <div class="card">
-    <h2>Share of runs by wait time, per ${waitProfileGroupBy} — drag to select a date range, click to clear</h2>
+    <h2>Share of runs by wait time, per ${waitProfileGroupBy}</h2>
     <div class="chart-groupby">${waitProfileGroupByInput}</div>
     ${resize((width) => waitProfileChart({width}))}
   </div>

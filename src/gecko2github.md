@@ -11,7 +11,7 @@ Snapshot taken at build time from STMO — see `data/_queries.yaml` for which
 queries back this page.
 
 ```js
-import {isoDate, dateRangeControl, attachDateBrush} from "./components/date-range.js";
+import {isoDate, dateRangeControl} from "./components/date-range.js";
 ```
 
 ```js
@@ -33,8 +33,7 @@ function fmtMinutes(v) {
 }
 ```
 
-Filters apply to every chart and stat on this page. Drag on the volume chart
-below to restrict the date range; click it to clear.
+Filters apply to every chart and stat on this page.
 
 <style>
 .filter-bar {
@@ -146,9 +145,6 @@ const dateRangeInput = dateRangeControl({
   to: urlParams.get("to")
 });
 const dateRange = Generators.input(dateRangeInput);
-function setDateRange(v) {
-  dateRangeInput.setRange(v);
-}
 ```
 
 <div class="filter-bar">
@@ -198,11 +194,6 @@ function matches(row) {
   return matchesProjectKindOs(row)
     && (day == null || (day >= rangeStart && day <= rangeEnd));
 }
-
-// The volume/picker chart deliberately filters by project/kind/os only, not
-// by date — it needs to keep showing the full window so there's always
-// something to brush, even after the date range has been narrowed.
-const pkoTrend = trend.filter(matchesProjectKindOs);
 
 const filteredTrend = trend.filter(matches);
 const filteredWorkerPool = workerPool.filter(matches);
@@ -319,17 +310,13 @@ function rangeTotal(type, field) {
 ```
 
 ```js
-const pkoAggregatedTrend = aggregateTrend(pkoTrend);
-
-// Built from pkoAggregatedTrend (project/kind/os filtered, but NOT date
-// filtered) so the full window stays brushable no matter what's selected.
-function dateRangePicker({width} = {}) {
+function volumeChart({width} = {}) {
   // rectY's interval-based binning needs an actual Date, not an ISO string —
   // passing a string silently collapses every day into a single bin.
-  const rows = pkoAggregatedTrend.map((r) => ({...r, day: new Date(r.day)}));
+  const rows = aggregatedTrend.map((r) => ({...r, day: new Date(r.day)}));
   const height = 260;
   const plot = Plot.plot({
-    title: "Task volume per day — drag to select a date range, click to clear",
+    title: "Task volume per day",
     width,
     height,
     x: {type: "utc", label: "Date"},
@@ -341,13 +328,13 @@ function dateRangePicker({width} = {}) {
     ]
   });
 
-  return attachDateBrush(plot, {height, dateRange, setDateRange});
+  return plot;
 }
 ```
 
 <div class="grid grid-cols-1">
   <div class="card">
-    ${resize((width) => dateRangePicker({width}))}
+    ${resize((width) => volumeChart({width}))}
   </div>
 </div>
 

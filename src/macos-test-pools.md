@@ -52,7 +52,7 @@ today is still accumulating. See `data/_queries.yaml` for the queries that
 back this page.
 
 ```js
-import {isoDate, dateRangeControl, attachDateBrush} from "./components/date-range.js";
+import {isoDate, dateRangeControl} from "./components/date-range.js";
 ```
 
 ```js
@@ -194,8 +194,7 @@ function aggregateBySuite(inputRows, seriesOf) {
 }
 ```
 
-Filters apply to every chart, stat and table below. Drag on the task-runs
-chart to restrict the date range; click it to clear.
+Filters apply to every chart, stat and table below.
 
 <style>
 .filter-bar {
@@ -311,9 +310,6 @@ const dateRangeInput = dateRangeControl({
   to: urlParams.get("to")
 });
 const dateRange = Generators.input(dateRangeInput);
-function setDateRange(v) {
-  dateRangeInput.setRange(v);
-}
 ```
 
 <div class="filter-bar">
@@ -360,9 +356,8 @@ const seriesOf = grouping === "Hardware" ? poolHardware : poolLabel;
 const poolRows = rows.filter((r) => selectedPools.has(poolLabel(r.worker_pool)));
 const rangeRows = poolRows.filter((r) => r.day >= rangeStart && r.day <= rangeEnd);
 
-// The picker chart deliberately filters by pool only, not by date — it needs
-// to keep showing the full window so there's always something to brush, even
-// after the date range has been narrowed.
+// Filters by pool only, not by date, so the legend's series order stays
+// stable as the date range narrows.
 const allPoolDays = poolDayTotals(poolRows);
 const rangePoolDays = allPoolDays.filter((d) => d.day >= rangeStart && d.day <= rangeEnd);
 
@@ -438,16 +433,14 @@ ${totals.unresolved > 0 ? htl.html`<p class="muted">Heads up: ${fmtNumber(totals
 ${implausible.length ? htl.html`<p class="muted"><strong>Data check:</strong> ${fmtNumber(implausible.length)} pool-day(s) in this range exceed the physical ceiling of machines &times; 24h — worst is ${poolLabel(implausible[0].worker_pool)} on ${implausible[0].day} at ${fmtPercent(implausible[0].utilization)}. That means runs are being counted more than once upstream, so treat every number here as inflated until it's fixed.</p>` : ""}
 
 ```js
-// Built from dailyAll (pool filtered, but NOT date filtered) so the full
-// window stays brushable no matter how narrow the selected range is.
 function tasksPerDayChart({width} = {}) {
-  if (!dailyAll.length) return htl.html`<p class="muted">No data for this filter.</p>`;
+  if (!daily.length) return htl.html`<p class="muted">No data for this filter.</p>`;
   // rectY's interval-based binning needs an actual Date, not an ISO string —
   // passing a string silently collapses every day into a single bin.
-  const data = dailyAll.map((d) => ({...d, day: new Date(d.day)}));
+  const data = daily.map((d) => ({...d, day: new Date(d.day)}));
   const height = 300;
   const plot = Plot.plot({
-    title: "Task runs per day — drag to select a date range, click to clear",
+    title: "Task runs per day",
     width,
     height,
     x: {type: "utc", label: "Date"},
@@ -459,7 +452,7 @@ function tasksPerDayChart({width} = {}) {
     ]
   });
 
-  return attachDateBrush(plot, {height, dateRange, setDateRange});
+  return plot;
 }
 ```
 
