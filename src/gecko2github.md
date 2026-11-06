@@ -22,8 +22,9 @@ const gitOutliers = (await FileAttachment("data/gecko2github-git-outliers.parque
 ```
 
 ```js
-const VCS_TYPES = ["hg", "git"];
-const VCS_COLOR = {domain: VCS_TYPES, range: ["#2ca02c", "#1f77b4"]};
+// git first: it's the migration target, and the kind chart stacks it first.
+const VCS_TYPES = ["git", "hg"];
+const VCS_COLOR = {domain: VCS_TYPES, range: ["#1f77b4", "#2ca02c"]};
 
 function fmtNumber(v) {
   return v == null ? "—" : v.toLocaleString("en-US");
@@ -401,7 +402,10 @@ function kindChart({width} = {}) {
     x: {label: "Tasks", grid: true},
     color: {...VCS_COLOR, legend: true},
     marks: [
-      Plot.barX(kindChartRows, {y: "kind", x: "tasks", fill: "vcs_type", tip: true}),
+      // Explicit stack order so git is always the segment against the
+      // baseline, regardless of which vcs_type a kind's rows happen to list
+      // first.
+      Plot.barX(kindChartRows, {y: "kind", x: "tasks", fill: "vcs_type", order: ["git", "hg"], tip: true}),
       Plot.ruleX([0])
     ]
   });
