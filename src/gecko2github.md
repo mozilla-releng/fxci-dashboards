@@ -17,7 +17,8 @@ import {isoDate, dateRangeControl, attachDateBrush} from "./components/date-rang
 ```js
 const trend = (await FileAttachment("data/gecko2github-trend.parquet").parquet()).toArray();
 const workerPool = (await FileAttachment("data/gecko2github-workerpool.parquet").parquet()).toArray();
-const gitTasks = (await FileAttachment("data/gecko2github-gittasks.parquet").parquet()).toArray();
+const gitHeatmap = (await FileAttachment("data/gecko2github-git-heatmap.parquet").parquet()).toArray();
+const gitOutliers = (await FileAttachment("data/gecko2github-git-outliers.parquet").parquet()).toArray();
 ```
 
 ```js
@@ -103,9 +104,9 @@ below to restrict the date range; click it to clear.
 </style>
 
 ```js
-const projects = [...new Set([...trend, ...workerPool, ...gitTasks].map((d) => d.project))].sort();
-const kinds = [...new Set([...trend, ...workerPool, ...gitTasks].map((d) => d.kind))].filter((k) => k != null).sort();
-const oses = [...new Set([...trend, ...workerPool, ...gitTasks].map((d) => d.os))].filter((o) => o != null).sort();
+const projects = [...new Set([...trend, ...workerPool, ...gitHeatmap].map((d) => d.project))].sort();
+const kinds = [...new Set([...trend, ...workerPool, ...gitHeatmap].map((d) => d.kind))].filter((k) => k != null).sort();
+const oses = [...new Set([...trend, ...workerPool, ...gitHeatmap].map((d) => d.os))].filter((o) => o != null).sort();
 
 // Seeds filters from the URL (?project=&kind=&os=&from=&to=) so a link with
 // query params reproduces the same view. Only read once at load — this page
@@ -116,13 +117,12 @@ function paramOr(name, allowed) {
   return v && allowed.includes(v) ? v : "All";
 }
 
-// trend/workerPool carry `day`; gitTasks only has a per-task `started`
-// timestamp, so pull its date portion in too — all three are bound by the
-// same rolling STMO query window, so the min/max should already agree.
+// All of these are bound by the same rolling STMO query window, so the
+// min/max should already agree.
 const availableDays = [
   ...trend.map((d) => d.day),
   ...workerPool.map((d) => d.day),
-  ...gitTasks.map((d) => d.started?.slice(0, 10))
+  ...gitHeatmap.map((d) => d.day)
 ].filter(Boolean).sort();
 const minDay = availableDays[0];
 const maxDay = availableDays[availableDays.length - 1];
@@ -206,7 +206,8 @@ const pkoTrend = trend.filter(matchesProjectKindOs);
 
 const filteredTrend = trend.filter(matches);
 const filteredWorkerPool = workerPool.filter(matches);
-const filteredGitTasks = gitTasks.filter(matches);
+const filteredGitHeatmap = gitHeatmap.filter(matches);
+const filteredGitOutliers = gitOutliers.filter(matches);
 
 const PERCENTILE_FIELDS = ["p50_overall", "p90_overall", "avg_overall", "p50_clone", "p90_clone", "p50_pull", "p90_pull"];
 
@@ -487,8 +488,6 @@ function workerPoolChart({width} = {}) {
 
 ## Git checkout tasks
 
-Per-task detail for tasks checking out via Git. Click a point to open its profile.
-
 ```js
 const TC = "https://firefox-ci-tc.services.mozilla.com";
 
@@ -509,55 +508,160 @@ function taskProfilerUrl(taskId, runId, label) {
   return `${profilerOrigin()}/from-url/${encodeURIComponent(base)}/marker-chart/?globalTrackOrder=0&profileName=${encodeURIComponent(name)}&thread=0&v=17`;
 }
 
-function gitScatterChart({width} = {}) {
-  if (!gitTasks.length) return htl.html`<p class="muted">No data for this chart.</p>`;
-  if (!filteredGitTasks.length) return htl.html`<p class="muted">No data for this filter.</p>`;
-  const rows = filteredGitTasks.map((r) => ({
-    ...r,
-    checkoutType: r.clone_minutes != null ? "clone" : "pull"
-  }));
-  const plot = Plot.plot({
-    title: "Git checkout tasks",
+function fmtDuration(minutes) {
+  const s = minutes * 60;
+  if (s < 60) return `${+s.toFixed(s < 10 ? 1 : 0)}s`;
+  if (minutes < 60) return `${+minutes.toFixed(minutes < 10 ? 1 : 0)}m`;
+  return `${+(minutes / 60).toFixed(1)}h`;
+}
+
+const CHECKOUT_TYPES = ["clone", "pull"];
+const CHECKOUT_COLOR = {
+  domain: CHECKOUT_TYPES,
+  range: dark ? ["#3987e5", "#d95926"] : ["#2a78d6", "#eb6834"]
+};
+
+// The STMO query bins VCS time into linear 15s buckets up to 10m, plus an
+// overflow bucket (bucket_hi_minutes null) for everything >= 10m. Past ~3m
+// the bars are too small to see (p99 is ~4m), so everything >= X_CAP is
+// folded into one overflow bar here — the slow tail is what the table below
+// is for. The overflow bar is drawn slightly detached past the cap so it
+// doesn't read as one more 15s bin.
+const X_CAP = 5;
+const OVERFLOW = [X_CAP + 0.125, X_CAP + 0.375];
+const OVERFLOW_MID = (OVERFLOW[0] + OVERFLOW[1]) / 2;
+
+// Sums the per-(day, project, kind, os) rows down to one bar segment per
+// (bucket, checkout_type) across the selected filters and date range.
+const histogramBins = (() => {
+  const acc = new Map();
+  for (const r of filteredGitHeatmap) {
+    const overflow = r.bucket_hi_minutes == null || r.bucket_lo_minutes >= X_CAP;
+    const key = `${overflow ? "overflow" : r.bucket}|${r.checkout_type}`;
+    const a = acc.get(key);
+    if (a) a.tasks += r.tasks;
+    else acc.set(key, {
+      checkout_type: r.checkout_type,
+      lo: overflow ? X_CAP : r.bucket_lo_minutes,
+      hi: overflow ? null : r.bucket_hi_minutes,
+      tasks: r.tasks
+    });
+  }
+  const total = [...acc.values()].reduce((n, a) => n + a.tasks, 0);
+  return [...acc.values()].map((a) => {
+    const overflow = a.hi == null;
+    return {
+      ...a,
+      x1: overflow ? OVERFLOW[0] : a.lo,
+      x2: overflow ? OVERFLOW[1] : a.hi,
+      band: overflow ? `≥ ${fmtDuration(a.lo)}` : `${fmtDuration(a.lo)}–${fmtDuration(a.hi)}`,
+      share: total ? a.tasks / total : 0
+    };
+  });
+})();
+
+function gitHistogramChart({width} = {}) {
+  if (!histogramBins.length) return htl.html`<p class="muted">No data for this filter.</p>`;
+  return Plot.plot({
     width,
-    height: 380,
-    marginBottom: 60,
-    x: {type: "utc", label: "Started"},
-    y: {label: "VCS (minutes)", grid: true},
-    color: {legend: true, label: "Project"},
-    symbol: {legend: true, label: "Checkout type"},
+    height: 320,
+    marginLeft: 60,
+    x: {
+      label: "VCS time",
+      domain: [0, OVERFLOW[1]],
+      ticks: [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, OVERFLOW_MID],
+      tickFormat: (m) => (m === 0 ? "0" : m === OVERFLOW_MID ? `${X_CAP}m+` : fmtDuration(m))
+    },
+    y: {label: "Tasks", grid: true, tickFormat: "~s"},
+    color: {...CHECKOUT_COLOR, legend: true, label: "Checkout"},
     marks: [
-      Plot.dot(rows, {
-        x: "started",
-        y: "overall_minutes",
-        stroke: "project",
-        symbol: "checkoutType",
-        r: 3.5,
-        opacity: 0.7,
-        channels: {platform: "platform", checkout: "checkoutType"},
-        tip: {format: {stroke: true, symbol: true, x: true, y: true}}
-      })
+      Plot.rectY(histogramBins, {
+        x1: "x1",
+        x2: "x2",
+        y: "tasks",
+        fill: "checkout_type",
+        insetLeft: 1,
+        insetRight: 1,
+        channels: {
+          band: {value: "band", label: "VCS time"},
+          share: {value: "share", label: "Share of tasks"}
+        },
+        tip: {
+          format: {
+            band: true,
+            fill: true,
+            y: (v) => v.toLocaleString("en-US"),
+            share: (v) => `${(v * 100).toFixed(1)}%`,
+            x1: false,
+            x2: false
+          }
+        }
+      }),
+      Plot.ruleY([0])
     ]
   });
-  // Deliberately not using Plot's per-dot `href` here: it wraps every point
-  // in its own SVG <a>, and Firefox exposes each one as an accessibility
-  // object whose bounds computation walks the *entire* mark group (SVG
-  // container frames never have a real rect, so the "empty rect" fallback
-  // path re-unions the whole subtree) — O(n^2) in the point count, and with
-  // a few thousand points that's a multi-minute main-thread hang for anyone
-  // with accessibility services active. A single click handler reading the
-  // tip's hovered datum keeps click-to-open-profile without the per-point
-  // <a> tags. Do not reintroduce a per-point href/target here.
-  plot.style.cursor = "pointer";
-  plot.addEventListener("click", () => {
-    const d = plot.value;
-    if (d) window.open(taskProfilerUrl(d.task_id, d.run_id, d.project), "_blank", "noopener");
-  });
-  return plot;
 }
+
+// Capped after the page filters are applied (not in SQL), so narrowing by
+// project/kind/os still surfaces that slice's slowest tasks.
+const SLOW_TASKS_LIMIT = 200;
+
+const slowTasks = filteredGitOutliers.map((r) => ({
+  // `started` has no timezone suffix but is UTC.
+  started: new Date(`${r.started}Z`),
+  project: r.project,
+  kind: r.kind,
+  platform: r.platform,
+  checkout: r.clone_minutes != null ? "clone" : "pull",
+  overall_minutes: r.overall_minutes,
+  ratio: r.overall_minutes / r.threshold_minutes,
+  profile: taskProfilerUrl(r.task_id, r.run_id, r.project)
+}))
+  .sort((a, b) => b.overall_minutes - a.overall_minutes)
+  .slice(0, SLOW_TASKS_LIMIT);
 ```
+
+How long git checkouts take for the selected filters and date range, in
+15-second bins. Anything over 5 minutes is collected in the last bar.
 
 <div class="grid grid-cols-1">
   <div class="card">
-    ${resize((width) => gitScatterChart({width}))}
+    <h2>Git checkout time distribution</h2>
+    ${resize((width) => gitHistogramChart({width}))}
+  </div>
+</div>
+
+The slowest tasks (up to ${SLOW_TASKS_LIMIT}) among those over the p99.75 VCS
+time for their kind and OS — "× typical" is how many times over that threshold
+the task was. Click a column header to sort.
+
+<div class="grid grid-cols-1">
+  <div class="card">
+    <h2>Slowest git checkouts <span class="muted">— ${slowTasks.length < filteredGitOutliers.length ? `top ${fmtNumber(slowTasks.length)} of ${fmtNumber(filteredGitOutliers.length)}` : `${fmtNumber(slowTasks.length)} tasks`}</span></h2>
+    ${Inputs.table(slowTasks, {
+      columns: ["started", "project", "kind", "platform", "checkout", "overall_minutes", "ratio", "profile"],
+      header: {
+        started: "Started (UTC)",
+        project: "Project",
+        kind: "Kind",
+        platform: "Platform",
+        checkout: "Checkout",
+        overall_minutes: "VCS time",
+        ratio: "× typical",
+        profile: "Profile"
+      },
+      format: {
+        started: (d) => d.toISOString().replace("T", " ").slice(0, 16),
+        overall_minutes: fmtDuration,
+        ratio: (v) => v.toFixed(1),
+        profile: (url) => htl.html`<a href=${url} target="_blank" rel="noopener">open</a>`
+      },
+      align: {overall_minutes: "right", ratio: "right"},
+      sort: "overall_minutes",
+      reverse: true,
+      select: false,
+      layout: "auto",
+      rows: 15
+    })}
   </div>
 </div>

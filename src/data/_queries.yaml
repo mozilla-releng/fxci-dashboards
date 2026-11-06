@@ -23,10 +23,15 @@
   queryId: 123299
   secretEnv: REDASH_API_KEY_GECKO2GITHUB_WORKERPOOL
 
-- name: gecko2github-gittasks
-  title: "Gecko2Github: per-task detail for git checkout tasks"
-  queryId: 123298
-  secretEnv: REDASH_API_KEY_GECKO2GITHUB_GITTASKS
+- name: gecko2github-git-heatmap
+  title: "Gecko2Github: git checkout task counts by day and VCS-time bucket"
+  queryId: 131164
+  secretEnv: REDASH_API_KEY_GECKO2GITHUB_GIT_HEATMAP
+
+- name: gecko2github-git-outliers
+  title: "Gecko2Github: git checkout tasks above their kind/os p99.75 VCS time"
+  queryId: 131163
+  secretEnv: REDASH_API_KEY_GECKO2GITHUB_GIT_OUTLIERS
 
 - name: checkout-caches-workerpool
   title: "Checkout Caches: cache hit/miss counts by worker pool"
