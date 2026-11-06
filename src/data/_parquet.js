@@ -6,9 +6,13 @@
 // FileAttachment(...).parquet(), which Framework backs with the same
 // apache-arrow/parquet-wasm pair used here.
 import {tableFromJSON, tableToIPC} from "apache-arrow";
-import {Table, writeParquet} from "parquet-wasm/node";
+import {Compression, Table, WriterPropertiesBuilder, writeParquet} from "parquet-wasm/node";
+
+// parquet-wasm writes uncompressed by default; ZSTD roughly halves file size
+// (gecko2github-gittasks: 36.5MB -> 20.2MB).
+const writerProps = () => new WriterPropertiesBuilder().setCompression(Compression.ZSTD).build();
 
 export function rowsToParquet(rows) {
   const ipc = tableToIPC(tableFromJSON(rows), "stream");
-  return Buffer.from(writeParquet(Table.fromIPCStream(ipc)));
+  return Buffer.from(writeParquet(Table.fromIPCStream(ipc), writerProps()));
 }
