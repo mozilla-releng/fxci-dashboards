@@ -21,8 +21,8 @@ const requestRows = (await FileAttachment("data/backfill-requests.parquet").parq
     tests: r.tests,
     builds: r.builds,
     profiles: r.profile_generations,
-    blocked: r.blocked_tests ? {count: r.blocked_tests} : null,
-    chain: r.last_test_id ? {total: r.last_test_resolved_s - r.created_s} : null
+    blocked: r.blocked_tests ? blockedPerfTasks(r) : null,
+    chain: r.last_test_id ? endToEndChain(r) : null
   }));
 ```
 
@@ -36,10 +36,62 @@ function requesterName(clientId) {
   const person = clientId?.match(/^mozilla-auth0\/[^|]+\|[^|]+\|([^/]+)\//);
   return person ? person[1] : (clientId?.replace(/^project\//, "") ?? "unknown");
 }
+
+// What a request waited for until its last perf task finished or expired, as
+// consecutive durations in seconds: the request task and the `backfill-task`
+// action, each until it created the next, then the instrumented build, the
+// profile generation, the build and the perf task each waiting then running. The
+// builds and the profile generation are zero when the perf task ran on a build
+// that already existed. The first is what the others leave out of the total: the
+// time between one task finishing and the next being able to run, such as signing.
+function endToEndChain(r) {
+  const total = r.last_test_resolved_s - r.created_s;
+  const durations = {
+    request: r.request_s,
+    action: r.action_s,
+    instrumentedWait: r.instrumented_wait_s,
+    instrumentedRun: r.instrumented_run_s,
+    profileWait: r.profile_wait_s,
+    profileRun: r.profile_run_s,
+    buildWait: r.build_wait_s,
+    buildRun: r.build_run_s,
+    testWait: r.test_wait_s,
+    testRun: r.test_run_s,
+    testExpired: r.test_expired_s
+  };
+  const unexplained = Math.max(0, total - d3.sum(Object.values(durations)));
+  return {
+    testId: r.last_test_id,
+    buildId: r.build_id,
+    profileId: r.profile_id,
+    instrumentedId: r.instrumented_id,
+    expired: r.test_expired_s > 0,
+    blocked: Boolean(r.test_blocked),
+    finished: new Date(r.last_test_resolved_s * 1000),
+    total,
+    // When every perf task of the request never ran, what no task accounts for is
+    // the wait for the broken task upstream, until the deadline.
+    durations: {other: r.test_blocked ? 0 : unexplained, blocked: r.test_blocked ? unexplained : 0, ...durations}
+  };
+}
+
+// The perf tasks of a request that never ran because a task they depend on
+// failed, expired or was cancelled: how many, when the last one gave up at its
+// deadline, and what broke, the dependency itself and the first task up the chain.
+function blockedPerfTasks(r) {
+  return {
+    count: r.blocked_tests,
+    testId: r.blocked_test_id,
+    deadline: new Date(r.blocked_resolved_s * 1000),
+    parent: r.blocked_parent_id ? {id: r.blocked_parent_id, label: r.blocked_parent_label, outcome: r.blocked_parent_outcome} : null,
+    root: r.blocked_root_id ? {id: r.blocked_root_id, label: r.blocked_root_label, outcome: r.blocked_root_outcome} : null
+  };
+}
 ```
 
 ```js
 const POOLS = ["Linux talos", "Windows 11 hw", "mac M4", "mac 14.70", "Android A55", "Windows hw-ref"];
+const EXCEPTION_COLOR = "#d99a00";
 const BUG_KEY = "bug";
 // When the patch of bug 1677741 landed on autoland: the time of its comment #15.
 const BUG_DATE = new Date("2026-09-04T10:33:58Z");
@@ -82,8 +134,40 @@ const requestsByPool = d3.group(requestRows, (r) => r.pool);
 const METRICS_TITLE = {chartKey: "chart-metrics", title: "Top line metrics"};
 const REQUESTS_TITLE = {chartKey: "chart-requests", title: "Backfill requests"};
 const REQUESTS_HEIGHT = 260;
-// Perf tests that never ran, because a task they depend on broke.
+const E2E_TITLE = {chartKey: "chart-endtoend", title: "From backfill request to its last perf task"};
+const E2E_HEIGHT = 240;
+const E2E_BAR_WIDTH = 5;
+// A perf task never runs when a task it depends on does not complete: it stays
+// unscheduled until its deadline. The root cause is the task at the top of that
+// chain of broken tasks, the first one that broke on its own, as the tasks below it
+// only never ran because of it. Its mark tells how it broke.
 const BLOCKED_COLOR = "#b3202a";
+const BLOCKED_GROUP = "Perf task that never ran, because a task upstream broke";
+const BLOCKED_KINDS = [
+  {key: "blocked-failed", title: "mark at its deadline, root cause failed", symbol: "times", marker: "cross", matches: (outcome) => outcome === "failed"},
+  {key: "blocked-expired", title: "mark at its deadline, root cause expired in a queue", symbol: "diamond2", marker: "diamond", matches: (outcome) => outcome === "expired"},
+  {key: "blocked-canceled", title: "mark at its deadline, root cause was cancelled", symbol: "triangle2", marker: "triangle", matches: (outcome) => outcome === "canceled"},
+  {key: "blocked-other", title: "mark at its deadline, root cause had an exception or is unknown", symbol: "square2", marker: "square", matches: () => true}
+];
+const blockedKind = ({root, parent}) => BLOCKED_KINDS.find(({matches}) => matches(root?.outcome ?? parent?.outcome ?? ""));
+// Bottom to top, in the order things happen. `group` and `short` title the
+// legend, `title` the tooltip. `applies` tells which requests have the segment.
+const hasId = (key) => (chain) => Boolean(chain[key]);
+const E2E_SEGMENTS = [
+  {key: "other", group: "Other", short: "gaps between tasks, such as signing and scheduling", title: "other gaps between tasks, such as signing and scheduling", color: "#cfcfcf"},
+  {key: "request", group: "Backfill request", short: "waiting and running, until it created the action", title: "backfill request waiting and running, until it created the action", color: "#b39a74"},
+  {key: "action", group: "Backfill-task action", short: "waiting and running, until it created the perf task", title: "backfill-task action waiting and running, until it created the perf task", color: "#8a4fb5"},
+  {key: "instrumentedWait", group: "Instrumented build", short: "waited for a worker", title: "instrumented build waited for a worker", color: "#f4c15d", applies: hasId("instrumentedId")},
+  {key: "instrumentedRun", group: "Instrumented build", short: "ran", title: "instrumented build ran", color: "#7cc79a", applies: hasId("instrumentedId")},
+  {key: "profileWait", group: "Profile generation", short: "waited for a worker", title: "profile generation waited for a worker", color: "#d98324", applies: hasId("profileId")},
+  {key: "profileRun", group: "Profile generation", short: "ran", title: "profile generation ran", color: "#237a4b", applies: hasId("profileId")},
+  {key: "buildWait", group: "Build", short: "waited for a worker", title: "build waited for a worker", color: "#f0b6c8", applies: hasId("buildId")},
+  {key: "buildRun", group: "Build", short: "ran", title: "build ran", color: "#c2476f", applies: hasId("buildId")},
+  {key: "testWait", group: "Perf task", short: "waited for a worker", title: "perf task waited for a worker", color: "#9cc3ee", applies: (chain) => !chain.expired || chain.durations.testWait > 0},
+  {key: "testRun", group: "Perf task", short: "ran", title: "perf task ran", color: "#2f74d0", applies: (chain) => !chain.expired || chain.durations.testRun > 0},
+  {key: "testExpired", group: "Perf task", short: "expired while waiting for a worker", title: "perf task expired while waiting for a worker", color: EXCEPTION_COLOR, applies: (chain) => chain.expired},
+  {key: "blocked", group: BLOCKED_GROUP, short: "bar up to its deadline, when no perf task of the request ran", title: "perf task never ran, waited for a broken upstream task until its deadline", color: BLOCKED_COLOR, applies: (chain) => chain.blocked}
+];
 const REQUEST_SIZES = [10, 50, 100];
 // What the requests chart's colour legend toggles: requests by how many profile
 // generations they triggered.
@@ -263,6 +347,40 @@ function requestTooltipContent(request) {
     <span class="bw-tt-pool">${request.pool}</span>`;
 }
 
+const OUTCOMES = {failed: "failed", expired: "expired in a queue", canceled: "was cancelled", exception: "ended with an exception"};
+const describeOutcome = (task) => `${task.label || "a task"} ${OUTCOMES[task.outcome] ?? "did not complete"}`;
+
+// What stopped a request's perf tasks from running: the dependency that broke, and
+// the root cause, the first task up the chain that broke on its own, with where to
+// look at it. They are the same task when the dependency itself broke on its own.
+function blockedLines({count, deadline, parent, root}) {
+  const same = parent && root && parent.id === root.id;
+  return htl.html`<div class="bw-tt-sep"></div>
+    <span class="bw-tt-blocked"><b>${countOf(count, "perf task")}</b> never ran, waiting until the last deadline, ${formatTime(deadline)}</span>
+    ${parent ? htl.html`<span class="bw-tt-blocked">${same ? "Broken task" : "Blocked by"}: ${describeOutcome(parent)}</span>` : ""}
+    ${root && !same ? htl.html`<span class="bw-tt-blocked">Root cause: ${describeOutcome(root)}</span>` : ""}
+    ${root ? htl.html`${taskLink(root.id, "→ TC Task of the root cause")}${dependencyTimelineLink({task_id: root.id}, "→ Dependency timeline of the root cause")}` : ""}`;
+}
+
+function endToEndTooltipContent(request) {
+  const {chain} = request;
+  const line = ({key, title, color}) =>
+    htl.html`<span><i class="bw-swatch" style="background:${color}"></i>${title}: <b>${formatWait(chain.durations[key] / 3600)}</b></span>`;
+  const ended = chain.blocked ? "never ran" : chain.expired ? "expired" : "finished";
+  return htl.html`${requestHeading(request)}
+    <span class="${chain.blocked ? "bw-tt-blocked" : chain.expired ? "bw-tt-expired" : ""}"><b>${formatWait(chain.total / 3600)}</b> until the last perf task ${ended}, ${formatTime(chain.finished)}</span>
+    <div class="bw-tt-sep"></div>
+    ${[...E2E_SEGMENTS].reverse().filter(({applies}) => !applies || applies(chain)).map(line)}
+    ${request.blocked ? blockedLines(request.blocked) : ""}
+    <div class="bw-tt-sep"></div>
+    ${requestLinks(request)}
+    ${chain.instrumentedId ? taskLink(chain.instrumentedId, "→ TC Task of the instrumented build") : ""}
+    ${chain.profileId ? taskLink(chain.profileId, "→ TC Task of the profile generation") : ""}
+    ${chain.buildId ? taskLink(chain.buildId, "→ TC Task of the build") : ""}
+    ${taskLink(chain.testId, "→ TC Task of the perf task")}
+    <span class="bw-tt-pool">${request.pool}</span>`;
+}
+
 // Rings the point on its chart, sized to it.
 function ringPoint(chartRect, {x, y}, size) {
   const ring = document.getElementById("bw-ring");
@@ -278,6 +396,11 @@ function showRequest(event, point, chartRect) {
   ringPoint(chartRect, point, Math.max(12, 2 * point.radius + 4));
 }
 
+function showEndToEnd(event, point, chartRect) {
+  if (!openTooltip(event, point.request.chain, endToEndTooltipContent(point.request))) return;
+  ringPoint(chartRect, point, 12);
+}
+
 // The dot under the pointer: of the dots it is inside, the smallest, so a small
 // dot on top of a big one stays reachable. Otherwise the nearest within reach.
 function requestAt(points, x, y) {
@@ -286,6 +409,13 @@ function requestAt(points, x, y) {
   if (inside.length) return inside.reduce((best, point) => (point.radius < best.radius ? point : best));
   const near = points.filter((point) => distanceTo(point) <= HIT_RADIUS);
   return near.length ? near.reduce((best, point) => (distanceTo(point) < distanceTo(best) ? point : best)) : null;
+}
+
+// The bar under the pointer: the nearest one within reach sideways, anywhere
+// from the axis up to a little above its dot.
+function barAt(points, x, y) {
+  const near = points.filter((point) => Math.abs(point.x - x) <= E2E_BAR_WIDTH && y >= point.y - HIT_RADIUS && y <= point.baseline + HIT_RADIUS);
+  return near.length ? near.reduce((best, point) => (Math.abs(point.x - x) < Math.abs(best.x - x) ? point : best)) : null;
 }
 
 // Hover and click on a Plot chart, with the tooltip shared by the other charts.
@@ -359,6 +489,68 @@ function requestsChart({requests, shown, width, hidden, domain}) {
   return plot;
 }
 
+// One bar per request, stacked from what happened first to what happened last,
+// with a dot at its top, which is the end-to-end time. The height scale comes
+// from all the platform's requests, like in the requests chart. Segments the
+// legend has hidden are left out and the others close ranks, so the dot is at
+// the top of what is left.
+function endToEndChart({requests, shown, width, hidden, domain}) {
+  const chained = shown.filter((request) => request.chain);
+  const segments = E2E_SEGMENTS.filter(({key}) => !hidden.has(key));
+  const topHours = (request) => d3.sum(segments, ({key}) => request.chain.durations[key]) / 3600;
+  const ends = segments.length ? chained : [];
+  const blockedHours = (request) => (request.blocked.deadline - request.time) / 3600000;
+  const maxHours = Math.max(d3.max(requests, (request) => request.chain?.total ?? 0) / 3600, d3.max(requests, (request) => (request.blocked ? blockedHours(request) : 0)) ?? 0);
+  // A perf task that never ran is marked where it gave up, at its deadline. When
+  // the request has others that ran, a line joins it to where they ended.
+  const marked = (kind) => shown.filter((request) => request.blocked && blockedKind(request.blocked) === kind && !hidden.has(kind.key));
+  const markedRequests = new Set(BLOCKED_KINDS.flatMap(marked));
+  const joined = [...markedRequests].filter((request) => request.chain && !request.chain.blocked);
+  const runEnds = ends.filter((request) => !request.chain.blocked);
+  const bars = chained.flatMap((request) => {
+    let from = 0;
+    return segments.map(({key}) => {
+      const to = from + request.chain.durations[key] / 3600;
+      const bar = {time: request.time, key, from, to};
+      from = to;
+      return bar;
+    });
+  });
+  const plot = Plot.plot({
+    width,
+    height: E2E_HEIGHT,
+    marginTop: MARGIN_TOP,
+    marginBottom: MARGIN_BOTTOM,
+    marginLeft: MARGIN_LEFT,
+    marginRight: MARGIN_RIGHT,
+    x: dateAxis(domain, width),
+    y: {domain: [0, maxHours * 1.05], grid: true, label: "hours"},
+    color: {domain: E2E_SEGMENTS.map(({key}) => key), range: E2E_SEGMENTS.map(({color}) => color)},
+    marks: [
+      Plot.ruleY([0], {strokeOpacity: 0.3}),
+      bugRule(domain, hidden),
+      Plot.ruleX(bars, {x: "time", y1: "from", y2: "to", stroke: "key", strokeWidth: E2E_BAR_WIDTH}),
+      Plot.ruleX(joined, {x: "time", y1: topHours, y2: blockedHours, stroke: BLOCKED_COLOR, strokeOpacity: 0.7, strokeDasharray: "2 2"}),
+      Plot.dot(runEnds.filter((request) => !request.chain.expired), {x: "time", y: topHours, r: 3, fill: "currentColor"}),
+      Plot.dot(runEnds.filter((request) => request.chain.expired), {x: "time", y: topHours, symbol: "times", r: 5, stroke: EXCEPTION_COLOR, strokeWidth: 2}),
+      ...BLOCKED_KINDS.map((kind) => Plot.dot(marked(kind), {x: "time", y: blockedHours, symbol: kind.symbol, r: 5, stroke: BLOCKED_COLOR, strokeWidth: 2, fill: "none"}))
+    ]
+  });
+  const x = plot.scale("x");
+  const y = plot.scale("y");
+  const drawnHours = (request) => Math.max(topHours(request), markedRequests.has(request) ? blockedHours(request) : 0);
+  const points = ends.map((request) => ({request, x: x.apply(request.time), y: y.apply(drawnHours(request)), baseline: y.apply(0)}));
+  attachPlotHover(plot, (px, py) => barAt(points, px, py), showEndToEnd);
+  return plot;
+}
+
+// How many requests the end-to-end chart shows.
+function endToEndKey(requests, shown) {
+  const count = (list) => list.filter((request) => request.chain).length;
+  const note = shown.length < requests.length ? htl.html`<span>${count(shown)} of ${count(requests)} requests</span>` : htl.html`<span>${count(requests)} of ${requests.length} requests, the others scheduled no perf task that ran, expired or never ran. A yellow cross is a perf task that expired. A red mark is a perf task that never ran because a task upstream broke, at its deadline. Its shape tells how the root cause ended: the first task up the chain that broke on its own, whose own dependencies were fine.</span>`;
+  return htl.html`<div class="bw-requests-key">${note}</div>`;
+}
+
 // What the sizes of the requests chart stand for, and how many requests it shows.
 function requestsKey(requests, shown, selectedRequester) {
   const maxTests = d3.max(requests, (r) => r.tests);
@@ -372,10 +564,25 @@ function requestsKey(requests, shown, selectedRequester) {
 
 const LEGEND_MARKERS = {
   dot: (color) => htl.svg`<svg width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="4" fill="${color}"></circle></svg>`,
+  cross: (color) => htl.svg`<svg width="10" height="10" aria-hidden="true"><path d="M1 1L9 9M1 9L9 1" stroke="${color}" stroke-width="1.6"></path></svg>`,
+  diamond: (color) => htl.svg`<svg width="10" height="10" aria-hidden="true"><path d="M5 0.8L9.2 5L5 9.2L0.8 5Z" fill="none" stroke="${color}" stroke-width="1.6"></path></svg>`,
+  triangle: (color) => htl.svg`<svg width="10" height="10" aria-hidden="true"><path d="M5 0.9L9.3 9H0.7Z" fill="none" stroke="${color}" stroke-width="1.6" stroke-linejoin="round"></path></svg>`,
+  square: (color) => htl.svg`<svg width="10" height="10" aria-hidden="true"><rect x="1" y="1" width="8" height="8" fill="none" stroke="${color}" stroke-width="1.6"></rect></svg>`,
   swatch: (color, alpha) => htl.svg`<svg width="10" height="10" aria-hidden="true"><rect width="10" height="10" rx="2" fill="${color}" fill-opacity="${Math.min(1, alpha + 0.2)}"></rect></svg>`,
   event: () => htl.svg`<svg width="18" height="10" aria-hidden="true"><path d="M0 5H18" stroke="currentColor" stroke-opacity="0.6" stroke-width="1.4" stroke-dasharray="2 3"></path></svg>`
 };
 const EVENT_LEGEND = {title: "Event", entries: [{key: BUG_KEY, title: "Backfill priority set to very-low (bug 1677741)", marker: () => LEGEND_MARKERS.event()}]};
+// One row per task of the chain, with what it waited for and ran.
+const E2E_LEGEND = [
+  ...d3.groups(E2E_SEGMENTS, (segment) => segment.group).map(([title, segments]) => ({
+    title,
+    entries: [
+      ...(title === BLOCKED_GROUP ? BLOCKED_KINDS.map(({key, title, marker}) => ({key, title, marker: () => LEGEND_MARKERS[marker](BLOCKED_COLOR)})) : []),
+      ...segments.map(({key, short, color}) => ({key, title: short, marker: () => LEGEND_MARKERS.swatch(color, 1)}))
+    ]
+  })),
+  EVENT_LEGEND
+];
 // The buckets of the platform's requests, coloured like the dots in them.
 const requestsLegend = (requests) => {
   const maxProfiles = d3.max(requests, (r) => r.profiles);
@@ -523,7 +730,7 @@ function syncCharts(section, domain, select) {
   });
 }
 
-const CHARTS = [METRICS_TITLE, REQUESTS_TITLE];
+const CHARTS = [METRICS_TITLE, REQUESTS_TITLE, E2E_TITLE];
 
 const METRIC_HEIGHT = 84;
 const METRIC_TOP = 18;
@@ -638,9 +845,9 @@ function metricsRow({requests, domain, width}) {
 }
 
 // The platform's charts, each as wide as the page and collapsed from its title:
-// what its backfill requests triggered. Each has its own legend under its title,
-// and its own hidden keys, `<chart key>:<key>`. A collapsed chart's key is its own
-// chart key.
+// what its backfill requests triggered and how long they took. Each has its own
+// legend under its title, and its own hidden keys, `<chart key>:<key>`. A collapsed
+// chart's key is its own chart key.
 const blockCache = new Map();
 
 function platformSection(pool, width, hidden, selectedRequester, domain) {
@@ -656,7 +863,8 @@ function platformSection(pool, width, hidden, selectedRequester, domain) {
     noRequests() ?? htl.html`${drawKey(requests, shown, selectedRequester)}${chartBox(draw({requests, shown, width, hidden, domain}), height)}`;
   const bodies = {
     "chart-metrics": {legend: () => null, draw: () => noRequests() ?? metricsRow({requests: shown, domain, width})},
-    "chart-requests": {legend: () => requests && requestsLegend(requests), draw: (hidden) => requestChart(requestsKey, requestsChart, REQUESTS_HEIGHT, hidden)}
+    "chart-requests": {legend: () => requests && requestsLegend(requests), draw: (hidden) => requestChart(requestsKey, requestsChart, REQUESTS_HEIGHT, hidden)},
+    "chart-endtoend": {legend: () => requests && E2E_LEGEND, draw: (hidden) => requestChart(endToEndKey, endToEndChart, E2E_HEIGHT, hidden)}
   };
   // A chart is drawn again only when something it shows changed: its own hidden keys,
   // whether it is collapsed, the platform, requester, days or width. Hiding a series
@@ -861,6 +1069,12 @@ function columnTitles(width, {chartKey, title}, collapsed) {
 #bw-tooltip .bw-tt-sep {
   margin: 4px 0;
   border-top: 1px solid #555;
+}
+#bw-tooltip .bw-tt-expired {
+  color: #f2c14e;
+}
+#bw-tooltip .bw-tt-blocked {
+  color: #ff8a8f;
 }
 #bw-tooltip .bw-tt-pool {
   font-size: 0.9em;
