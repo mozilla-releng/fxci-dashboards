@@ -6,6 +6,11 @@ toc: false
 # Perf backfill waits
 
 ```js
+// A pool cannot have more busy workers than workers. A few bins do, by up to ten
+// times, all on 14 and 15 June, so what is busy is cut back to the pool's workers.
+const loadRows = (await FileAttachment("data/backfill-load.parquet").parquet())
+  .toArray()
+  .map((r) => ({pool: r.pool, bin_s: r.bin_s, workers: r.workers, busy: Math.min(r.busy, r.workers)}));
 const queueTable = await FileAttachment("data/backfill-queue.parquet").parquet();
 const requestRows = (await FileAttachment("data/backfill-requests.parquet").parquet())
   .toArray()
@@ -30,7 +35,9 @@ const requestRows = (await FileAttachment("data/backfill-requests.parquet").parq
 
 ```js
 import {openDependencyTimeline, openDownstreamTimeline, poolActivityDays} from "./_task-profile.js";
+import {openQueueGantt} from "./_queue-profile.js";
 import {indexQueueSeries, KINDS as QUEUE_KINDS, queuedPerBucket} from "./_queue-position.js";
+import {FIRST_DAY, LAST_DAY} from "./_task-queues.js";
 ```
 
 ```js
@@ -121,8 +128,8 @@ const formatTime = d3.utcFormat("%-d %b %H:%M UTC");
 
 // The days the data covers, and the range the charts show, as [first moment, end
 // of the last day].
-const DATA_FIRST_DAY = new Date("2026-06-14T00:00:00Z");
-const DATA_LAST_DAY = new Date("2026-11-24T00:00:00Z");
+const DATA_FIRST_DAY = new Date(`${FIRST_DAY}T00:00:00Z`);
+const DATA_LAST_DAY = new Date(`${LAST_DAY}T00:00:00Z`);
 const dayAfter = (day) => new Date(+day + DAY_MS);
 const TICK_DAYS = [1, 2, 7, 14, 28, 56];
 const TICK_SPACING = 90;
@@ -229,6 +236,7 @@ const PROFILE_BUCKETS = [
   {key: "profiles-20-plus", title: "20 or more", has: (n) => n >= 20}
 ];
 const profileBucket = (profiles) => PROFILE_BUCKETS.find((bucket) => bucket.has(profiles));
+const binsByPool = d3.group(loadRows, (r) => r.pool);
 ```
 
 ```js
@@ -303,6 +311,29 @@ const downstreamTimelineLink = (request) =>
     (onProgress) =>
       openDownstreamTimeline({requestId: request.id, taskIds: request.downstreamIds, pushGroups: request.pushGroups, poolActivityUrls, timelineUrl, queueTable, onProgress}),
     `${request.id}-downstream.json`
+  );
+
+// The workers of a queue's pool: the six test pools are named on the page, and the
+// build pools in the load data after their queue.
+const POOL_OF_QUEUE = new Map(Object.entries(POOL_QUEUES).map(([pool, queue]) => [queue, pool]));
+const workerBinsOf = (queue) => binsByPool.get(POOL_OF_QUEUE.get(queue) ?? queue) ?? null;
+
+// The tasks waiting in a queue, a day around a moment, by priority and kind.
+const queueGanttLink = ({queue, roles, time}) =>
+  timelineLink(
+    "→ Gantt of the queue, by priority and kind",
+    () =>
+      openQueueGantt({
+        queueTable,
+        queue,
+        roles,
+        centerMs: +time,
+        firstMs: +DATA_FIRST_DAY,
+        lastMs: +dayAfter(DATA_LAST_DAY),
+        poolActivityUrls,
+        workerBins: workerBinsOf(queue)
+      }),
+    `${queue.replace("/", "-")}-queue.json`
   );
 
 // One tooltip shared by every chart. Hovering opens it and it stays open briefly
@@ -615,7 +646,9 @@ function queueTooltipContent({queue, roles, time, counts, total}) {
     <span class="bw-tt-pool">${queue}, ${roles}</span>
     <div class="bw-tt-sep"></div>
     <span><b>${Math.round(total).toLocaleString("en-US")}</b> tasks waiting for a worker</span>
-    ${QUEUE_LAYERS.filter((layer) => Math.round(counts.get(layer.key)) > 0).map(line)}`;
+    ${QUEUE_LAYERS.filter((layer) => Math.round(counts.get(layer.key)) > 0).map(line)}
+    <div class="bw-tt-sep"></div>
+    ${queueGanttLink({queue, roles, time})}`;
 }
 
 // The runs waiting in a task queue over time, stacked from the bottom by priority,

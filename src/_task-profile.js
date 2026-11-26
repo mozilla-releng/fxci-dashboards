@@ -4,7 +4,7 @@ const TC_URL = "https://firefox-ci-tc.services.mozilla.com";
 const QUEUE_API = `${TC_URL}/api/queue/v1`;
 const QUEUE_URL = `${QUEUE_API}/task`;
 const PROFILER_ORIGIN = "https://profiler.firefox.com";
-const PROFILER_POST_URL = `${PROFILER_ORIGIN}/from-post-message/`;
+export const PROFILER_POST_URL = `${PROFILER_ORIGIN}/from-post-message/`;
 
 const PROCESSED_PROFILE_VERSION = 77;
 const REQUEST_CONCURRENCY = 8;
@@ -21,7 +21,7 @@ const HANDSHAKE_TIMEOUT_MS = 30_000;
 // Zero-width characters in increasing code point order: a row name starting with
 // the n-th one sorts after the names starting with the ones before it, and shows
 // nothing.
-const UPSTREAM_ORDER = ["​", "‌", "‍", "⁠", "⁡", "⁢", "⁣", "⁤", "⁪", "⁫", "⁬", "⁭"];
+export const UPSTREAM_ORDER = ["​", "‌", "‍", "⁠", "⁡", "⁢", "⁣", "⁤", "⁪", "⁫", "⁬", "⁭"];
 const CATEGORY_CLOCK = 0;
 const CATEGORY_QUEUE = 1;
 const FIRST_TASK_CATEGORY = 2;
@@ -37,13 +37,13 @@ const EXCEPTION_COLOR = "yellow";
 // other tasks grey.
 const TIER_COLORS = {highest: "red", "very-high": "orange", high: "yellow", medium: "teal"};
 const KIND_COLORS = {backfill: "purple", perf: "green", other: "grey"};
-const layerColor = ({tier, kind}) => (kind ? KIND_COLORS[kind] : TIER_COLORS[tier]);
+export const layerColor = ({tier, kind}) => (kind ? KIND_COLORS[kind] : TIER_COLORS[tier]);
 const MIN_QUEUE_GRAPH_MS = 600_000;
 const QUEUE_THREAD_NAME = "Tasks ahead of";
 
 const toMs = (iso) => Date.parse(iso);
-const pad = (n) => String(n).padStart(2, "0");
-const formatClockTime = (ms) => `${new Date(ms).toISOString().replace("T", " ").slice(0, 19)} UTC`;
+export const pad = (n) => String(n).padStart(2, "0");
+export const formatClockTime = (ms) => `${new Date(ms).toISOString().replace("T", " ").slice(0, 19)} UTC`;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function getJson(url, {attempts = REQUEST_ATTEMPTS, ...init} = {}) {
@@ -195,7 +195,7 @@ function taskIntervals(task, now) {
   return intervals;
 }
 
-function clockIntervals(fromMs, untilMs) {
+export function clockIntervals(fromMs, untilMs) {
   const intervals = [];
   for (let start = Math.floor(fromMs / HOUR_MS) * HOUR_MS, index = 0; start < untilMs; start += HOUR_MS, index++) {
     const date = new Date(start);
@@ -247,7 +247,7 @@ function poolDayFields(poolActivityUrls, queue, fromMs, toMs) {
   return fields;
 }
 
-function markerTable(strings, threadId) {
+export function markerTable(strings, threadId) {
   const table = {data: [], name: [], startTime: [], endTime: [], phase: [], category: [], threadId: [], length: 0};
   const stringIndex = (value) => {
     const found = strings.indexOf(value);
@@ -391,21 +391,53 @@ export function buildProfile(
 
   const title = `${titleParts.heading} ${focus.id}, from ${formatClockTime(windowStart)}, ${shown.length} tasks: ${titleParts.describe}${unavailable ? `, ${unavailable} expired tasks not available` : ""}`;
 
+  return processedProfile({
+    title,
+    startTime: windowStart,
+    strings,
+    categories: [
+      {name: "Clock (UTC)", color: "grey"},
+      {name: "Queue", color: "orange"},
+      ...[...taskCategories.keys()].map((name) => ({name, color: "grey"}))
+    ],
+    markerSchema: [
+      {
+        name: "TaskInterval",
+        display: ["marker-chart", "marker-table"],
+        colorField: "color",
+        chartLabel: "{marker.data.label}",
+        tableLabel: "{marker.data.label}",
+        tooltipLabel: "{marker.data.label}",
+        fields: MARKER_FIELDS
+      },
+      {
+        name: "QueueAhead",
+        display: ["marker-table"],
+        tableLabel: "{marker.data.label}",
+        tooltipLabel: "{marker.data.label}",
+        description: "Runs queued in the same task queue that workers take before this one: every queued run of a higher priority, and the runs of its own priority that were queued earlier.",
+        fields: QUEUE_FIELDS,
+        graphs: QUEUE_GRAPHS
+      }
+    ],
+    threads: [thread({name: "Tasks", id: 0, markers: table}), ...(queueMarkers.table.length ? [thread({name: QUEUE_THREAD_NAME, id: 1, markers: queueMarkers.table})] : [])]
+  });
+}
+
+// A processed profile that holds markers only. Its categories group the rows of
+// the marker chart.
+export function processedProfile({title, startTime, strings, categories, markerSchema, threads}) {
   return {
     meta: {
       interval: 1,
-      startTime: windowStart,
+      startTime,
       abi: "",
       misc: "",
       oscpu: "",
       platform: "",
       processType: 0,
       extensions: {id: [], name: [], baseURL: [], length: 0},
-      categories: [
-        {name: "Clock (UTC)", color: "grey", subcategories: ["Other"]},
-        {name: "Queue", color: "orange", subcategories: ["Other"]},
-        ...[...taskCategories.keys()].map((name) => ({name, color: "grey", subcategories: ["Other"]}))
-      ],
+      categories: categories.map((category) => ({...category, subcategories: ["Other"]})),
       product: title,
       stackwalk: 0,
       toolkit: "",
@@ -417,26 +449,7 @@ export function buildProfile(
       logicalCPUs: 0,
       CPUName: "",
       symbolicated: true,
-      markerSchema: [
-        {
-          name: "TaskInterval",
-          display: ["marker-chart", "marker-table"],
-          colorField: "color",
-          chartLabel: "{marker.data.label}",
-          tableLabel: "{marker.data.label}",
-          tooltipLabel: "{marker.data.label}",
-          fields: MARKER_FIELDS
-        },
-        {
-          name: "QueueAhead",
-          display: ["marker-table"],
-          tableLabel: "{marker.data.label}",
-          tooltipLabel: "{marker.data.label}",
-          description: "Runs queued in the same task queue that workers take before this one: every queued run of a higher priority, and the runs of its own priority that were queued earlier.",
-          fields: QUEUE_FIELDS,
-          graphs: QUEUE_GRAPHS
-        }
-      ]
+      markerSchema
     },
     libs: [],
     pages: [],
@@ -450,7 +463,7 @@ export function buildProfile(
       stringArray: strings,
       sourceLocationTable: emptyTable(["source", "line", "column"])
     },
-    threads: [thread({name: "Tasks", id: 0, markers: table}), ...(queueMarkers.table.length ? [thread({name: QUEUE_THREAD_NAME, id: 1, markers: queueMarkers.table})] : [])]
+    threads
   };
 }
 
@@ -470,7 +483,7 @@ function dependencyDepths(tasks) {
   return depths;
 }
 
-function thread({name, id, markers}) {
+export function thread({name, id, markers}) {
   return {
     processType: "default",
     processStartupTime: 0,
@@ -495,7 +508,7 @@ export function poolActivityDays(fromMs, toMs, urlForDate) {
   return urls;
 }
 
-function injectProfile(profilerWindow, profile) {
+export function injectProfile(profilerWindow, profile) {
   return new Promise((resolve, reject) => {
     const startedAt = Date.now();
     const stop = () => {

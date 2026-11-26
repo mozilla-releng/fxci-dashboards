@@ -58,6 +58,11 @@
   queryId: 126751
   secretEnv: REDASH_API_KEY_PENDING_TIMES
 
+- name: backfill-load
+  title: "Backfill Waits: busy workers, capacity and waiting tasks per pool in 15-minute bins, with perf and perf backfill shares"
+  queryId: 132107
+  secretEnv: REDASH_API_KEY_PERF_BACKFILL_LOAD
+
 - name: backfill-queue
   title: "Backfill Waits: queued runs per task queue, priority tier and 5-minute bin"
   queryId: 132165
@@ -67,3 +72,43 @@
   title: "Backfill Waits: backfill requests with the tests, builds and profile generations each triggered"
   queryId: 132186
   secretEnv: REDASH_API_KEY_PERF_BACKFILL_REQUESTS
+
+# The six below are `archive` queries: every run of some task queues, one row
+# per run, about a million rows each. Their loader (data/tasks/[chunk].tar.js)
+# writes one Parquet file per queue and week instead of one data/<name>.parquet.
+# The queues and weeks of each chunk are listed in src/_task-queues.js.
+- name: backfill-tasks-a
+  title: "Backfill Waits: every run of the task queues, chunk a (mac M4 test pool, first half)"
+  queryId: 132237
+  secretEnv: REDASH_API_KEY_PERF_BACKFILL_TASKS_A
+  archive: true
+
+- name: backfill-tasks-b
+  title: "Backfill Waits: every run of the task queues, chunk b (linux and windows build pools)"
+  queryId: 132235
+  secretEnv: REDASH_API_KEY_PERF_BACKFILL_TASKS_B
+  archive: true
+
+- name: backfill-tasks-c
+  title: "Backfill Waits: every run of the task queues, chunk c (mac 14.70 test pool)"
+  queryId: 132238
+  secretEnv: REDASH_API_KEY_PERF_BACKFILL_TASKS_C
+  archive: true
+
+- name: backfill-tasks-d
+  title: "Backfill Waits: every run of the task queues, chunk d (windows and android test pools, mac build pool)"
+  queryId: 132236
+  secretEnv: REDASH_API_KEY_PERF_BACKFILL_TASKS_D
+  archive: true
+
+- name: backfill-tasks-e
+  title: "Backfill Waits: every run of the task queues, chunk e (linux talos test pool)"
+  queryId: 132242
+  secretEnv: REDASH_API_KEY_PERF_BACKFILL_TASKS_E
+  archive: true
+
+- name: backfill-tasks-f
+  title: "Backfill Waits: every run of the task queues, chunk f (mac M4 test pool, second half)"
+  queryId: 132241
+  secretEnv: REDASH_API_KEY_PERF_BACKFILL_TASKS_F
+  archive: true

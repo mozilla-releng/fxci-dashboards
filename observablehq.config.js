@@ -1,10 +1,12 @@
 // See https://observablehq.com/framework/config for documentation.
 import {readFileSync} from "node:fs";
 import {load} from "js-yaml";
+import {taskFilePaths} from "./src/_task-queues.js";
 
 // Query registry (see src/data/_queries.yaml) — drives which
 // data/<name>.parquet outputs the parameterized loader
-// (src/data/[name].parquet.js) must produce.
+// (src/data/[name].parquet.js) must produce. The queries marked `archive`
+// produce the weekly files of data/tasks/<chunk>/ instead.
 const queries = load(readFileSync(new URL("./src/data/_queries.yaml", import.meta.url), "utf8"));
 
 export default {
@@ -15,7 +17,10 @@ export default {
   // loader — Framework can't discover these on its own since
   // [name].parquet.js matches no fixed path.
   async *dynamicPaths() {
-    for (const q of queries) yield `/data/${q.name}.parquet`;
+    for (const q of queries) {
+      if (q.archive) yield* taskFilePaths(q.name.replace("backfill-tasks-", ""));
+      else yield `/data/${q.name}.parquet`;
+    }
   },
 
   // The pages and sections in the sidebar. Add one entry per dashboard.
