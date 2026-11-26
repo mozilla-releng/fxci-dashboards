@@ -6,6 +6,7 @@ toc: false
 # Perf backfill waits
 
 ```js
+const queueTable = await FileAttachment("data/backfill-queue.parquet").parquet();
 const requestRows = (await FileAttachment("data/backfill-requests.parquet").parquet())
   .toArray()
   .map((r) => ({
@@ -21,6 +22,7 @@ const requestRows = (await FileAttachment("data/backfill-requests.parquet").parq
     tests: r.tests,
     builds: r.builds,
     profiles: r.profile_generations,
+    queues: {instrumented: r.instrumented_queue, profile: r.profile_queue, build: r.build_queue},
     blocked: r.blocked_tests ? blockedPerfTasks(r) : null,
     chain: r.last_test_id ? endToEndChain(r) : null
   }));
@@ -28,6 +30,7 @@ const requestRows = (await FileAttachment("data/backfill-requests.parquet").parq
 
 ```js
 import {openDependencyTimeline, openDownstreamTimeline, poolActivityDays} from "./_task-profile.js";
+import {indexQueueSeries, KINDS as QUEUE_KINDS, queuedPerBucket} from "./_queue-position.js";
 ```
 
 ```js
@@ -90,7 +93,16 @@ function blockedPerfTasks(r) {
 ```
 
 ```js
-const POOLS = ["Linux talos", "Windows 11 hw", "mac M4", "mac 14.70", "Android A55", "Windows hw-ref"];
+const POOL_QUEUES = {
+  "Linux talos": "releng-hardware/gecko-t-linux-talos-2404",
+  "Windows 11 hw": "releng-hardware/win11-64-24h2-hw",
+  "mac M4": "releng-hardware/gecko-t-osx-1500-m4",
+  "mac 14.70": "releng-hardware/gecko-t-osx-1400-r8",
+  "Android A55": "proj-autophone/gecko-t-lambda-perf-a55",
+  "Windows hw-ref": "releng-hardware/win11-64-24h2-hw-ref"
+};
+const POOLS = Object.keys(POOL_QUEUES);
+const BUCKET_SECONDS = [900, 1800, 3600, 7200, 10800, 21600, 43200, 86400];
 const EXCEPTION_COLOR = "#d99a00";
 const BUG_KEY = "bug";
 // When the patch of bug 1677741 landed on autoland: the time of its comment #15.
@@ -136,6 +148,45 @@ const REQUESTS_TITLE = {chartKey: "chart-requests", title: "Backfill requests"};
 const REQUESTS_HEIGHT = 260;
 const E2E_TITLE = {chartKey: "chart-endtoend", title: "From backfill request to its last perf task"};
 const E2E_HEIGHT = 240;
+const QUEUES_TITLE = {chartKey: "chart-queues", title: "Tasks queued by priority in the worker pools of those tasks"};
+const QUEUE_HEIGHT = 150;
+// The pools a request waits in, in the order of its chain, and what each runs.
+const CHAIN_POOL_ROLES = [
+  {key: "instrumented", title: "instrumented builds"},
+  {key: "profile", title: "profile generations"},
+  {key: "build", title: "builds"},
+  {key: "test", title: "perf tasks"}
+];
+const TIER_COLORS = new Map([
+  ["highest", "#d64045"],
+  ["very-high", "#f28c28"],
+  ["high", "#f2c14e"],
+  ["medium", "#2ba3b8"]
+]);
+// What a queue's layers are: one for each of the higher priorities, then for each
+// of the low ones (low, very-low and lowest) one for each kind of run, so that the
+// perf backfills of a priority can be told from what else waits in it, and from
+// the perf backfills of the others. The kinds use the colours of the same things in
+// the pool load, lighter for each lower priority.
+const LOW_TIERS = [
+  {tier: "low", title: "Low priority", fade: 0},
+  {tier: "very-low", title: "Very low priority", fade: 0.3},
+  {tier: "lowest", title: "Lowest priority", fade: 0.55}
+];
+const LOW_KINDS = {backfill: {title: "backfill tasks", color: "#8e44ad"}, perf: {title: "other perf tasks", color: "#3d9a5b"}, other: {title: "other tasks", color: "#8a8a8a"}};
+const QUEUE_LAYERS = [
+  ...[...TIER_COLORS].map(([tier, color]) => ({key: tier, title: tier, tooltip: tier, color, values: (depth, bucket) => depth.tiers.get(tier)[bucket]})),
+  ...LOW_TIERS.flatMap(({tier, title, fade}) =>
+    QUEUE_KINDS.map((kind) => ({
+      key: `${tier}-${kind}`,
+      group: title,
+      title: LOW_KINDS[kind].title,
+      tooltip: `${tier}, ${LOW_KINDS[kind].title}`,
+      color: d3.interpolateRgb(LOW_KINDS[kind].color, "#ffffff")(fade),
+      values: (depth, bucket) => depth.kinds.get(tier).get(kind)[bucket]
+    }))
+  )
+];
 const E2E_BAR_WIDTH = 5;
 // A perf task never runs when a task it depends on does not complete: it stays
 // unscheduled until its deadline. The root cause is the task at the top of that
@@ -243,14 +294,14 @@ function timelineLink(text, open, filename) {
 const timelineUrl = (taskId) => `${window.location.origin}${window.location.pathname}?timeline=${taskId}`;
 
 const dependencyTimelineLink = ({task_id}, text = "→ Dependency timeline") =>
-  timelineLink(text, (onProgress) => openDependencyTimeline({taskId: task_id, poolActivityUrls, timelineUrl, onProgress}), `${task_id}-dependencies.json`);
+  timelineLink(text, (onProgress) => openDependencyTimeline({taskId: task_id, poolActivityUrls, timelineUrl, queueTable, onProgress}), `${task_id}-dependencies.json`);
 
 // The tasks a backfill request started and what they created.
 const downstreamTimelineLink = (request) =>
   timelineLink(
     "→ Downstream timeline",
     (onProgress) =>
-      openDownstreamTimeline({requestId: request.id, taskIds: request.downstreamIds, pushGroups: request.pushGroups, poolActivityUrls, timelineUrl, onProgress}),
+      openDownstreamTimeline({requestId: request.id, taskIds: request.downstreamIds, pushGroups: request.pushGroups, poolActivityUrls, timelineUrl, queueTable, onProgress}),
     `${request.id}-downstream.json`
   );
 
@@ -544,6 +595,80 @@ function endToEndChart({requests, shown, width, hidden, domain}) {
   return plot;
 }
 
+// The worker pools the chain tasks of these requests ran in: for each kind of
+// task the queue most requests used, with kinds that share a queue merged. The
+// perf tasks run in the platform's own pool.
+function chainPools(requests, pool) {
+  const mostUsed = (key) => {
+    const counts = d3.rollups(requests, (group) => group.length, (request) => request.queues[key]).filter(([queue]) => queue);
+    return d3.greatest(counts, ([, count]) => count)?.[0];
+  };
+  const queueOf = ({key}) => (key === "test" ? POOL_QUEUES[pool] : mostUsed(key));
+  const byQueue = d3.group(CHAIN_POOL_ROLES.filter((role) => queueOf(role)), queueOf);
+  return Array.from(byQueue, ([queue, roles]) => ({queue, roles: roles.map(({title}) => title).join(" and ")}));
+}
+
+// What a queue held at the pointer: the runs waiting in each layer, and in all.
+function queueTooltipContent({queue, roles, time, counts, total}) {
+  const line = (layer) => htl.html`<span><i class="bw-swatch" style="background:${layer.color}"></i>${layer.tooltip}: <b>${Math.round(counts.get(layer.key)).toLocaleString("en-US")}</b></span>`;
+  return htl.html`<span><b>${formatTime(time)}</b></span>
+    <span class="bw-tt-pool">${queue}, ${roles}</span>
+    <div class="bw-tt-sep"></div>
+    <span><b>${Math.round(total).toLocaleString("en-US")}</b> tasks waiting for a worker</span>
+    ${QUEUE_LAYERS.filter((layer) => Math.round(counts.get(layer.key)) > 0).map(line)}`;
+}
+
+// The runs waiting in a task queue over time, stacked from the bottom by priority,
+// highest first, down to the lowest, where each low priority is split by what the
+// runs are. Each bucket is the mean over its width, like the pool load.
+function queueChart({queue, roles, width, hidden, domain}) {
+  const secondsPerPixel = (domain[1] - domain[0]) / 1000 / (width - MARGIN_LEFT - MARGIN_RIGHT);
+  const bucketSeconds = BUCKET_SECONDS.find((seconds) => seconds >= secondsPerPixel) ?? BUCKET_SECONDS[BUCKET_SECONDS.length - 1];
+  const depth = queuedPerBucket(indexQueueSeries(queueTable), queue, {fromSeconds: +domain[0] / 1000, toSeconds: +domain[1] / 1000, bucketSeconds});
+  const shownLayers = QUEUE_LAYERS.filter(({key}) => !hidden.has(key));
+  const buckets = depth ? d3.range(depth.bucketCount) : [];
+  const timeOf = (bucket) => new Date((depth.firstBin + bucket * bucketSeconds) * 1000);
+  const valueOf = (layer, bucket) => layer.values(depth, bucket);
+  const totalOf = (bucket, layers) => d3.sum(layers, (layer) => valueOf(layer, bucket));
+  const rows = buckets.flatMap((bucket) => shownLayers.map((layer) => ({time: timeOf(bucket), layer: layer.key, queued: valueOf(layer, bucket)})));
+  const top = Math.max(1, d3.max(buckets, (bucket) => totalOf(bucket, shownLayers)) ?? 1);
+  const plot = Plot.plot({
+    width,
+    height: QUEUE_HEIGHT,
+    marginTop: MARGIN_TOP,
+    marginBottom: MARGIN_BOTTOM,
+    marginLeft: MARGIN_LEFT,
+    marginRight: MARGIN_RIGHT,
+    x: dateAxis(domain, width),
+    y: {domain: [0, top * 1.05], grid: true, label: "tasks waiting"},
+    color: {domain: QUEUE_LAYERS.map(({key}) => key), range: QUEUE_LAYERS.map(({color}) => color)},
+    marks: [
+      Plot.ruleY([0], {strokeOpacity: 0.3}),
+      bugRule(domain, hidden),
+      Plot.areaY(rows, {x: "time", y: "queued", z: "layer", fill: "layer", order: QUEUE_LAYERS.map(({key}) => key), curve: "step-after", fillOpacity: 0.85})
+    ]
+  });
+  const xScale = plot.scale("x");
+  const find = (px, py) => {
+    if (!depth || px < MARGIN_LEFT || px > width - MARGIN_RIGHT || py < MARGIN_TOP || py > QUEUE_HEIGHT - MARGIN_BOTTOM) return null;
+    const bucket = Math.floor((+xScale.invert(px) / 1000 - depth.firstBin) / bucketSeconds);
+    return bucket >= 0 && bucket < depth.bucketCount ? {bucket, x: px} : null;
+  };
+  const show = (event, {bucket}) => {
+    const counts = new Map(QUEUE_LAYERS.map((layer) => [layer.key, valueOf(layer, bucket)]));
+    const content = queueTooltipContent({queue, roles, time: timeOf(bucket), counts, total: totalOf(bucket, QUEUE_LAYERS)});
+    if (openTooltip(event, `${queue}:${bucket}:${bucketSeconds}`, content)) document.getElementById("bw-ring").style.display = "none";
+  };
+  attachPlotHover(plot, find, show);
+  return plot;
+}
+
+// One chart for each worker pool the requests' tasks ran in.
+function queuesBlock({requests, pool, width, hidden, domain}) {
+  const heading = (roles, queue) => htl.html`<div class="bw-requests-key"><span><b>${roles[0].toUpperCase()}${roles.slice(1)}</b> run in ${queue}</span></div>`;
+  return htl.html`${chainPools(requests, pool).map(({queue, roles}) => htl.html`${heading(roles, queue)}${chartBox(queueChart({queue, roles, width, hidden, domain}), QUEUE_HEIGHT)}`)}`;
+}
+
 // How many requests the end-to-end chart shows.
 function endToEndKey(requests, shown) {
   const count = (list) => list.filter((request) => request.chain).length;
@@ -580,6 +705,14 @@ const E2E_LEGEND = [
       ...(title === BLOCKED_GROUP ? BLOCKED_KINDS.map(({key, title, marker}) => ({key, title, marker: () => LEGEND_MARKERS[marker](BLOCKED_COLOR)})) : []),
       ...segments.map(({key, short, color}) => ({key, title: short, marker: () => LEGEND_MARKERS.swatch(color, 1)}))
     ]
+  })),
+  EVENT_LEGEND
+];
+const QUEUE_LEGEND = [
+  {title: "Priority", entries: QUEUE_LAYERS.slice(0, TIER_COLORS.size).map(({key, title, color}) => ({key, title, marker: () => LEGEND_MARKERS.swatch(color, 1)}))},
+  ...LOW_TIERS.map(({title}) => ({
+    title,
+    entries: QUEUE_LAYERS.filter((layer) => layer.group === title).map(({key, title, color}) => ({key, title, marker: () => LEGEND_MARKERS.swatch(color, 1)}))
   })),
   EVENT_LEGEND
 ];
@@ -730,7 +863,7 @@ function syncCharts(section, domain, select) {
   });
 }
 
-const CHARTS = [METRICS_TITLE, REQUESTS_TITLE, E2E_TITLE];
+const CHARTS = [METRICS_TITLE, REQUESTS_TITLE, E2E_TITLE, QUEUES_TITLE];
 
 const METRIC_HEIGHT = 84;
 const METRIC_TOP = 18;
@@ -845,9 +978,10 @@ function metricsRow({requests, domain, width}) {
 }
 
 // The platform's charts, each as wide as the page and collapsed from its title:
-// what its backfill requests triggered and how long they took. Each has its own
-// legend under its title, and its own hidden keys, `<chart key>:<key>`. A collapsed
-// chart's key is its own chart key.
+// what its backfill requests triggered, how long they took, and what waited in the
+// queues of the workers they ran on. Each has its own legend under its title, and
+// its own hidden keys, `<chart key>:<key>`. A collapsed chart's key is its own
+// chart key.
 const blockCache = new Map();
 
 function platformSection(pool, width, hidden, selectedRequester, domain) {
@@ -864,7 +998,8 @@ function platformSection(pool, width, hidden, selectedRequester, domain) {
   const bodies = {
     "chart-metrics": {legend: () => null, draw: () => noRequests() ?? metricsRow({requests: shown, domain, width})},
     "chart-requests": {legend: () => requests && requestsLegend(requests), draw: (hidden) => requestChart(requestsKey, requestsChart, REQUESTS_HEIGHT, hidden)},
-    "chart-endtoend": {legend: () => requests && E2E_LEGEND, draw: (hidden) => requestChart(endToEndKey, endToEndChart, E2E_HEIGHT, hidden)}
+    "chart-endtoend": {legend: () => requests && E2E_LEGEND, draw: (hidden) => requestChart(endToEndKey, endToEndChart, E2E_HEIGHT, hidden)},
+    "chart-queues": {legend: () => requests?.length && QUEUE_LEGEND, draw: (hidden) => noRequests() ?? queuesBlock({requests, pool, width, hidden, domain})}
   };
   // A chart is drawn again only when something it shows changed: its own hidden keys,
   // whether it is collapsed, the platform, requester, days or width. Hiding a series

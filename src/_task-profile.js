@@ -1,3 +1,5 @@
+import {aheadSeries, indexQueueSeries, LAYERS} from "./_queue-position.js";
+
 const TC_URL = "https://firefox-ci-tc.services.mozilla.com";
 const QUEUE_API = `${TC_URL}/api/queue/v1`;
 const QUEUE_URL = `${QUEUE_API}/task`;
@@ -21,7 +23,8 @@ const HANDSHAKE_TIMEOUT_MS = 30_000;
 // nothing.
 const UPSTREAM_ORDER = ["​", "‌", "‍", "⁠", "⁡", "⁢", "⁣", "⁤", "⁪", "⁫", "⁬", "⁭"];
 const CATEGORY_CLOCK = 0;
-const FIRST_TASK_CATEGORY = 1;
+const CATEGORY_QUEUE = 1;
+const FIRST_TASK_CATEGORY = 2;
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -29,6 +32,14 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 const STATE_COLORS = {completed: "green", failed: "red"};
 const WAIT_COLOR = "orange";
 const EXCEPTION_COLOR = "yellow";
+// The higher tiers have a colour of their own, the low ones the colour of the kind
+// of run, as in the page's queue chart: backfills purple, other perf tasks green,
+// other tasks grey.
+const TIER_COLORS = {highest: "red", "very-high": "orange", high: "yellow", medium: "teal"};
+const KIND_COLORS = {backfill: "purple", perf: "green", other: "grey"};
+const layerColor = ({tier, kind}) => (kind ? KIND_COLORS[kind] : TIER_COLORS[tier]);
+const MIN_QUEUE_GRAPH_MS = 600_000;
+const QUEUE_THREAD_NAME = "Tasks ahead of";
 
 const toMs = (iso) => Date.parse(iso);
 const pad = (n) => String(n).padStart(2, "0");
@@ -161,7 +172,7 @@ function taskIntervals(task, now) {
     const worker = run.workerId ? `${run.workerGroup}/${run.workerId}` : "";
     const details = {state: run.state, reason: run.reasonResolved === run.state ? "" : (run.reasonResolved ?? ""), worker};
     if (started) {
-      intervals.push({start: scheduled, end: started, label: `Waiting for a worker (run ${run.runId})`, color: WAIT_COLOR, ...details});
+      intervals.push({start: scheduled, end: started, label: `Waiting for a worker (run ${run.runId})`, color: WAIT_COLOR, wait: true, ...details});
       intervals.push({
         start: started,
         end: resolved ?? now,
@@ -176,6 +187,7 @@ function taskIntervals(task, now) {
         end: resolved ?? now,
         label: `Waiting for a worker (run ${run.runId})${never}`,
         color: resolved ? EXCEPTION_COLOR : WAIT_COLOR,
+        wait: true,
         ...details
       });
     }
@@ -208,8 +220,18 @@ const MARKER_FIELDS = [
   {key: "to", label: "To", format: "string"},
   {key: "state", label: "State", format: "string"},
   {key: "reason", label: "Resolved as", format: "string"},
-  {key: "worker", label: "Worker", format: "string"}
+  {key: "worker", label: "Worker", format: "string"},
+  {key: "aheadAtStart", label: "Tasks ahead when scheduled", format: "integer"},
+  {key: "aheadAtStartBy", label: "By priority", format: "string"}
 ];
+
+const QUEUE_FIELDS = [
+  {key: "ahead", label: "Tasks ahead of it", format: "integer"},
+  ...LAYERS.map(({key, label}) => ({key, label: `${label}${label.includes(",") ? "" : " priority"}`, format: "integer"})),
+  ...LAYERS.map(({key, label}) => ({key: `stack_${key}`, label, format: "integer", hidden: true}))
+];
+
+const QUEUE_GRAPHS = [...LAYERS].reverse().map((layer) => ({key: `stack_${layer.key}`, type: "bar", color: layerColor(layer)}));
 
 function withoutEmpty(fields) {
   return Object.fromEntries(Object.entries(fields).filter(([, value]) => value));
@@ -248,6 +270,24 @@ function emptyTable(columns) {
   return {...Object.fromEntries(columns.map((column) => [column, []])), length: 0};
 }
 
+// The graphs stack the layers from the first in line, up to the task's own tier.
+function stackedCounts(counts, tier) {
+  const lastOwn = LAYERS.map((layer) => layer.tier).lastIndexOf(tier);
+  const stacked = {};
+  LAYERS.forEach(({key}, index) => {
+    stacked[`stack_${key}`] = index > lastOwn ? 0 : LAYERS.slice(0, index + 1).reduce((sum, layer) => sum + (counts[layer.key] ?? 0), 0);
+  });
+  return stacked;
+}
+
+function tierBreakdown(counts) {
+  return LAYERS.filter(({key}) => counts[key]).map(({key, label}) => `${counts[key].toLocaleString("en-US")} ${label}`).join(", ");
+}
+
+function waitSamples(queueSeries, definition, interval) {
+  return queueSeries ? aheadSeries(queueSeries, {queue: definition.taskQueueId, tier: definition.priority, scheduledMs: interval.start, endMs: interval.end}) : [];
+}
+
 function finishedBefore(intervals) {
   const last = intervals[intervals.length - 1];
   return {
@@ -266,11 +306,12 @@ const taskName = ({definition}) => definition.metadata.name;
 
 export function buildProfile(
   {focus, tasks, unavailable = 0, titleParts = DEPENDENCIES_TITLE, groupOf = () => ""},
-  {poolActivityUrls, timelineUrl = null, now = Date.now()}
+  {poolActivityUrls, timelineUrl = null, queueSeries = null, now = Date.now()}
 ) {
   const windowStart = toMs(focus.definition.created) - WINDOW_LEAD_MS;
   const strings = [];
   const {table, add} = markerTable(strings, 0);
+  const queueMarkers = markerTable(strings, 1);
 
   const perTask = tasks.map((task) => {
     const intervals = taskIntervals(task, now);
@@ -310,6 +351,8 @@ export function buildProfile(
     const {definition} = task;
     const row = `${task.id === focus.id ? "▶ " : ""}${uniqueName(task)}`;
     for (const interval of intervals) {
+      const samples = interval.wait ? waitSamples(queueSeries, definition, interval) : [];
+      const first = samples[0];
       add({
         row,
         category: categoryOf(task),
@@ -327,9 +370,22 @@ export function buildProfile(
           project: definition.tags?.project ?? "unknown",
           from: formatClockTime(interval.start),
           to: formatClockTime(interval.end),
-          ...withoutEmpty({state: interval.state, reason: interval.reason, worker: interval.worker})
+          ...withoutEmpty({state: interval.state, reason: interval.reason, worker: interval.worker}),
+          ...(first ? {aheadAtStart: first.ahead, aheadAtStartBy: tierBreakdown(first.counts) || "none"} : {})
         }
       });
+      if (samples.length && interval.end - interval.start >= MIN_QUEUE_GRAPH_MS) {
+        for (const sample of samples) {
+          queueMarkers.add({
+            type: "QueueAhead",
+            row: uniqueName(task),
+            category: CATEGORY_QUEUE,
+            start: Math.max(sample.startMs, windowStart) - windowStart,
+            end: sample.endMs - windowStart,
+            data: {label: `${sample.ahead.toLocaleString("en-US")} tasks ahead`, ahead: sample.ahead, ...sample.counts, ...stackedCounts(sample.counts, definition.priority)}
+          });
+        }
+      }
     }
   }
 
@@ -347,6 +403,7 @@ export function buildProfile(
       extensions: {id: [], name: [], baseURL: [], length: 0},
       categories: [
         {name: "Clock (UTC)", color: "grey", subcategories: ["Other"]},
+        {name: "Queue", color: "orange", subcategories: ["Other"]},
         ...[...taskCategories.keys()].map((name) => ({name, color: "grey", subcategories: ["Other"]}))
       ],
       product: title,
@@ -369,6 +426,15 @@ export function buildProfile(
           tableLabel: "{marker.data.label}",
           tooltipLabel: "{marker.data.label}",
           fields: MARKER_FIELDS
+        },
+        {
+          name: "QueueAhead",
+          display: ["marker-table"],
+          tableLabel: "{marker.data.label}",
+          tooltipLabel: "{marker.data.label}",
+          description: "Runs queued in the same task queue that workers take before this one: every queued run of a higher priority, and the runs of its own priority that were queued earlier.",
+          fields: QUEUE_FIELDS,
+          graphs: QUEUE_GRAPHS
         }
       ]
     },
@@ -384,7 +450,7 @@ export function buildProfile(
       stringArray: strings,
       sourceLocationTable: emptyTable(["source", "line", "column"])
     },
-    threads: [thread({name: "Tasks", id: 0, markers: table})]
+    threads: [thread({name: "Tasks", id: 0, markers: table}), ...(queueMarkers.table.length ? [thread({name: QUEUE_THREAD_NAME, id: 1, markers: queueMarkers.table})] : [])]
   };
 }
 
@@ -474,17 +540,17 @@ async function fetchDownstream({requestId, taskIds, pushGroups}, onProgress) {
 
 // `timelineUrl(taskId)` is the address that opens a task's dependency timeline;
 // each task of the profile links to it.
-export const openDependencyTimeline = ({taskId, poolActivityUrls, timelineUrl = null, onProgress}) =>
-  openTimeline(() => fetchCriticalChain(taskId, onProgress), {poolActivityUrls, timelineUrl});
+export const openDependencyTimeline = ({taskId, poolActivityUrls, timelineUrl = null, queueTable = null, onProgress}) =>
+  openTimeline(() => fetchCriticalChain(taskId, onProgress), {poolActivityUrls, timelineUrl, queueTable});
 
-export const openDownstreamTimeline = ({requestId, taskIds, pushGroups, poolActivityUrls, timelineUrl = null, onProgress}) =>
-  openTimeline(() => fetchDownstream({requestId, taskIds, pushGroups}, onProgress), {poolActivityUrls, timelineUrl});
+export const openDownstreamTimeline = ({requestId, taskIds, pushGroups, poolActivityUrls, timelineUrl = null, queueTable = null, onProgress}) =>
+  openTimeline(() => fetchDownstream({requestId, taskIds, pushGroups}, onProgress), {poolActivityUrls, timelineUrl, queueTable});
 
-async function openTimeline(fetchTasks, {poolActivityUrls, timelineUrl}) {
+async function openTimeline(fetchTasks, {poolActivityUrls, timelineUrl, queueTable}) {
   const profilerWindow = window.open(PROFILER_POST_URL, "_blank");
   try {
     const chain = await fetchTasks();
-    const profile = buildProfile(chain, {poolActivityUrls, timelineUrl});
+    const profile = buildProfile(chain, {poolActivityUrls, timelineUrl, queueSeries: queueTable ? indexQueueSeries(queueTable) : null});
     if (!profilerWindow) {
       return {opened: false, downloadUrl: URL.createObjectURL(new Blob([JSON.stringify(profile)], {type: "application/json"}))};
     }

@@ -58,6 +58,11 @@
   queryId: 126751
   secretEnv: REDASH_API_KEY_PENDING_TIMES
 
+- name: backfill-queue
+  title: "Backfill Waits: queued runs per task queue, priority tier and 5-minute bin"
+  queryId: 132165
+  secretEnv: REDASH_API_KEY_PERF_BACKFILL_QUEUE
+
 - name: backfill-requests
   title: "Backfill Waits: backfill requests with the tests, builds and profile generations each triggered"
   queryId: 132186
