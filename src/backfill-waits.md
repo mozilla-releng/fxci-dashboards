@@ -10,14 +10,24 @@ const requestRows = (await FileAttachment("data/backfill-requests.parquet").parq
   .toArray()
   .map((r) => ({
     pool: r.pool,
+    id: r.request_id,
+    pushGroups: r.push_group_ids ? r.push_group_ids.split(",") : [],
+    downstreamIds: r.downstream_ids ? r.downstream_ids.split(",") : [],
+    fromRevision: r.from_revision,
+    toRevision: r.to_revision,
     requester: requesterName(r.requested_by),
     time: new Date(r.created_s * 1000),
+    target: r.target_label.replace(/^test-[^/]+\/\w+-/, ""),
     tests: r.tests,
     builds: r.builds,
     profiles: r.profile_generations,
     blocked: r.blocked_tests ? {count: r.blocked_tests} : null,
     chain: r.last_test_id ? {total: r.last_test_resolved_s - r.created_s} : null
   }));
+```
+
+```js
+import {openDependencyTimeline, openDownstreamTimeline, poolActivityDays} from "./_task-profile.js";
 ```
 
 ```js
@@ -37,6 +47,10 @@ const MARGIN_TOP = 18;
 const MARGIN_BOTTOM = 22;
 const MARGIN_LEFT = 44;
 const MARGIN_RIGHT = 40;
+const HIT_RADIUS = 8;
+const TC_URL = "https://firefox-ci-tc.services.mozilla.com";
+const TREEHERDER_URL = "https://treeherder.mozilla.org";
+const WORKERS_URL = "https://tests.firefox.dev/workers.html";
 const DAY_MS = 86400000;
 const formatDay = d3.utcFormat("%-d %b");
 const formatTime = d3.utcFormat("%-d %b %H:%M UTC");
@@ -46,6 +60,17 @@ const formatTime = d3.utcFormat("%-d %b %H:%M UTC");
 const DATA_FIRST_DAY = new Date("2026-06-14T00:00:00Z");
 const DATA_LAST_DAY = new Date("2026-11-24T00:00:00Z");
 const dayAfter = (day) => new Date(+day + DAY_MS);
+const TICK_DAYS = [1, 2, 7, 14, 28, 56];
+const TICK_SPACING = 90;
+
+// A tick every day, two days, week and so on, as often as they stay apart.
+function dateTicks(domain, width) {
+  const days = (domain[1] - domain[0]) / DAY_MS;
+  const room = Math.max(2, (width - MARGIN_LEFT - MARGIN_RIGHT) / TICK_SPACING);
+  return d3.utcDay.range(domain[0], domain[1], TICK_DAYS.find((step) => days / step <= room) ?? TICK_DAYS[TICK_DAYS.length - 1]);
+}
+
+const dateAxis = (domain, width) => ({type: "utc", domain, ticks: dateTicks(domain, width), tickFormat: formatDay, label: null});
 
 const bugRule = (domain, hidden) =>
   hidden.has(BUG_KEY) || BUG_DATE < domain[0] || BUG_DATE > domain[1]
@@ -55,8 +80,20 @@ const bugRule = (domain, hidden) =>
 const inDomain = (domain, ms) => ms >= domain[0] && ms < domain[1];
 const requestsByPool = d3.group(requestRows, (r) => r.pool);
 const METRICS_TITLE = {chartKey: "chart-metrics", title: "Top line metrics"};
+const REQUESTS_TITLE = {chartKey: "chart-requests", title: "Backfill requests"};
+const REQUESTS_HEIGHT = 260;
 // Perf tests that never ran, because a task they depend on broke.
 const BLOCKED_COLOR = "#b3202a";
+const REQUEST_SIZES = [10, 50, 100];
+// What the requests chart's colour legend toggles: requests by how many profile
+// generations they triggered.
+const PROFILE_BUCKETS = [
+  {key: "profiles-none", title: "none", has: (n) => n === 0},
+  {key: "profiles-1-9", title: "1 to 9", has: (n) => n >= 1 && n <= 9},
+  {key: "profiles-10-19", title: "10 to 19", has: (n) => n >= 10 && n <= 19},
+  {key: "profiles-20-plus", title: "20 or more", has: (n) => n >= 20}
+];
+const profileBucket = (profiles) => PROFILE_BUCKETS.find((bucket) => bucket.has(profiles));
 ```
 
 ```js
@@ -67,12 +104,78 @@ function formatWait(hours) {
   return minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
 }
 
+// workers.html shows each pool's activity for a day, with a Profiler button on
+// every pool row. It only keeps recent days, and silently shows the latest one
+// when asked for a day it does not have, so link to it only for the days its
+// own index lists. Until that list loads, or if it fails, there is no link.
+let workersDays = new Set();
+fetch(`${TC_URL}/api/index/v1/task/gecko.v2.mozilla-central.latest.source.test-info-worker-data/artifacts/public/index.json`)
+  .then((response) => response.json())
+  .then(({dates}) => {
+    workersDays = new Set(dates);
+  })
+  .catch(() => {});
+
+function workersUrl(queue, date) {
+  return workersDays.has(date) ? `${WORKERS_URL}?${new URLSearchParams({date, filter: queue})}` : null;
+}
+
+function poolActivityUrls(queue, fromMs, toMs) {
+  return poolActivityDays(fromMs, toMs, (date) => workersUrl(queue, date));
+}
+
+// A link that opens a Gantt in the Firefox Profiler. `open` gets a progress
+// callback and returns the opener's result. The window opens inside the click so
+// popup blockers allow it.
+function timelineLink(text, open, filename) {
+  const link = htl.html`<a href="#">${text}</a>`;
+  link.addEventListener("click", async (event) => {
+    event.preventDefault();
+    if (link.dataset.busy) return;
+    link.dataset.busy = "true";
+    const label = link.textContent;
+    try {
+      const result = await open((count) => {
+        link.textContent = `→ Loading ${count} tasks…`;
+      });
+      link.textContent = label;
+      if (!result.opened) {
+        link.href = result.downloadUrl;
+        link.download = filename;
+        link.textContent = "→ Popup blocked: download the profile, then drop it on profiler.firefox.com";
+      }
+    } catch (error) {
+      link.textContent = `${text} failed: ${error.message}`;
+    } finally {
+      delete link.dataset.busy;
+    }
+  });
+  return link;
+}
+
+// Where a task's dependency timeline opens from, so that a profile can link its
+// tasks to theirs. The page shows a link to open it, since the profiler can only
+// be opened from a click.
+const timelineUrl = (taskId) => `${window.location.origin}${window.location.pathname}?timeline=${taskId}`;
+
+const dependencyTimelineLink = ({task_id}, text = "→ Dependency timeline") =>
+  timelineLink(text, (onProgress) => openDependencyTimeline({taskId: task_id, poolActivityUrls, timelineUrl, onProgress}), `${task_id}-dependencies.json`);
+
+// The tasks a backfill request started and what they created.
+const downstreamTimelineLink = (request) =>
+  timelineLink(
+    "→ Downstream timeline",
+    (onProgress) =>
+      openDownstreamTimeline({requestId: request.id, taskIds: request.downstreamIds, pushGroups: request.pushGroups, poolActivityUrls, timelineUrl, onProgress}),
+    `${request.id}-downstream.json`
+  );
+
 // One tooltip shared by every chart. Hovering opens it and it stays open briefly
 // after the pointer leaves, and while the pointer is over it. Clicking pins it, so
 // the pointer can travel to its links; clicking elsewhere or pressing Escape
 // releases it.
 const tooltipState = {key: null, hideTimer: null, pinned: false, dragging: false};
-const OVERLAY_IDS = ["bw-tooltip"];
+const OVERLAY_IDS = ["bw-tooltip", "bw-ring"];
 
 function hideTooltip() {
   tooltipState.key = null;
@@ -113,7 +216,77 @@ function openTooltip(event, key, content) {
   return true;
 }
 
+const REQUEST_RADII = [2, 14];
+const requestRadius = (tests, maxTests) => REQUEST_RADII[0] + (REQUEST_RADII[1] - REQUEST_RADII[0]) * Math.sqrt(tests / maxTests);
 const countOf = (n, noun, plural = `${noun}s`) => `${n} ${n === 1 ? noun : plural}`;
+const purples = (t) => d3.interpolatePurples(0.25 + 0.75 * t);
+const profileColor = (profiles, maxProfiles) => purples(Math.sqrt(profiles / maxProfiles));
+const requestColor = (maxProfiles) => ({type: "sqrt", domain: [0, maxProfiles], interpolate: purples});
+
+// The requester's name filters the requests to theirs, through the input that
+// holds the filter.
+function requesterLink(name) {
+  const link = htl.html`<a href="#" title="Show only the requests of ${name}">${name}</a>`;
+  link.addEventListener("click", (event) => {
+    event.preventDefault();
+    document.dispatchEvent(new CustomEvent("bw-requester", {detail: name}));
+    hideTooltip();
+  });
+  return link;
+}
+
+const treeherderRangeUrl = ({fromRevision, toRevision}) =>
+  `${TREEHERDER_URL}/jobs?repo=autoland&fromchange=${fromRevision}&tochange=${toRevision}`;
+
+const taskLink = (id, text) => htl.html`<a href="${TC_URL}/tasks/${id}" target="_blank" rel="noopener">${text}</a>`;
+
+// Where to look at what a request did: the tasks it triggered over time, the
+// pushes it backfilled up to the one it was made on, and its own task.
+function requestLinks(request) {
+  return htl.html`${downstreamTimelineLink(request)}
+    ${request.fromRevision && request.toRevision ? htl.html`<a href="${treeherderRangeUrl(request)}" target="_blank" rel="noopener">→ Treeherder, the pushes it backfilled</a>` : ""}
+    ${taskLink(request.id, "→ TC Task of the request")}`;
+}
+
+function requestHeading(request) {
+  return htl.html`<span><b>${request.target}</b></span>
+    <span>requested ${formatTime(request.time)}</span>
+    <div class="bw-tt-links">by ${requesterLink(request.requester)}</div>`;
+}
+
+function requestTooltipContent(request) {
+  return htl.html`${requestHeading(request)}
+    <span>${countOf(request.tests, "perf test")} scheduled on ${countOf(request.pushGroups.length, "older push", "older pushes")}</span>
+    <span>${countOf(request.builds, "build")} and ${countOf(request.profiles, "profile generation")} triggered</span>
+    <div class="bw-tt-sep"></div>
+    ${requestLinks(request)}
+    <span class="bw-tt-pool">${request.pool}</span>`;
+}
+
+// Rings the point on its chart, sized to it.
+function ringPoint(chartRect, {x, y}, size) {
+  const ring = document.getElementById("bw-ring");
+  ring.style.width = `${size}px`;
+  ring.style.height = `${size}px`;
+  ring.style.left = `${chartRect.left + x}px`;
+  ring.style.top = `${chartRect.top + y}px`;
+  ring.style.display = "block";
+}
+
+function showRequest(event, point, chartRect) {
+  if (!openTooltip(event, point.request, requestTooltipContent(point.request))) return;
+  ringPoint(chartRect, point, Math.max(12, 2 * point.radius + 4));
+}
+
+// The dot under the pointer: of the dots it is inside, the smallest, so a small
+// dot on top of a big one stays reachable. Otherwise the nearest within reach.
+function requestAt(points, x, y) {
+  const distanceTo = (point) => Math.hypot(point.x - x, point.y - y);
+  const inside = points.filter((point) => distanceTo(point) <= point.radius);
+  if (inside.length) return inside.reduce((best, point) => (point.radius < best.radius ? point : best));
+  const near = points.filter((point) => distanceTo(point) <= HIT_RADIUS);
+  return near.length ? near.reduce((best, point) => (distanceTo(point) < distanceTo(best) ? point : best)) : null;
+}
 
 // Hover and click on a Plot chart, with the tooltip shared by the other charts.
 // `find` gets the pointer's position in the chart and returns the point there.
@@ -138,6 +311,114 @@ function attachPlotHover(plot, find, show) {
     tooltipState.pinned = true;
   });
 }
+
+// What each backfill request triggered, on the same date axis as the task charts
+// above it, with the same tooltip. Requests made in the same minute land on top
+// of each other, so the dots are translucent.
+// The scales come from all the platform's requests, so that filtering by
+// requester does not rescale the dots.
+function requestsChart({requests, shown, width, hidden, domain}) {
+  const maxTests = d3.max(requests, (r) => r.tests);
+  const maxBuilds = d3.max(requests, (r) => r.builds);
+  const padding = Math.max(1, maxBuilds * 0.08);
+  const dots = shown.filter((request) => !hidden.has(profileBucket(request.profiles).key));
+  const plot = Plot.plot({
+    width,
+    height: REQUESTS_HEIGHT,
+    marginTop: MARGIN_TOP,
+    marginBottom: MARGIN_BOTTOM,
+    marginLeft: MARGIN_LEFT,
+    marginRight: MARGIN_RIGHT,
+    x: dateAxis(domain, width),
+    y: {domain: [-padding, maxBuilds + padding], ticks: d3.ticks(0, maxBuilds, 6), grid: true, label: "builds"},
+    r: {domain: [0, maxTests], range: REQUEST_RADII},
+    color: requestColor(d3.max(requests, (r) => r.profiles)),
+    marks: [
+      Plot.ruleY([0], {strokeOpacity: 0.3}),
+      bugRule(domain, hidden),
+      Plot.dot(dots, {
+        x: "time",
+        y: "builds",
+        r: "tests",
+        fill: "profiles",
+        fillOpacity: 0.7,
+        stroke: "currentColor",
+        strokeOpacity: 0.25
+      })
+    ]
+  });
+  const x = plot.scale("x");
+  const y = plot.scale("y");
+  const points = dots.map((request) => ({
+    request,
+    x: x.apply(request.time),
+    y: y.apply(request.builds),
+    radius: requestRadius(request.tests, maxTests)
+  }));
+  attachPlotHover(plot, (px, py) => requestAt(points, px, py), showRequest);
+  return plot;
+}
+
+// What the sizes of the requests chart stand for, and how many requests it shows.
+function requestsKey(requests, shown, selectedRequester) {
+  const maxTests = d3.max(requests, (r) => r.tests);
+  const side = 2 * REQUEST_RADII[1] + 2;
+  const sizes = REQUEST_SIZES.filter((tests) => tests <= maxTests).map(
+    (tests) => htl.html`<span class="bw-key"><svg width="${side}" height="${side}"><circle cx="${side / 2}" cy="${side / 2}" r="${requestRadius(tests, maxTests)}" fill="currentColor" fill-opacity="0.15" stroke="currentColor" stroke-opacity="0.5"></circle></svg>${tests} tests</span>`
+  );
+  const filter = selectedRequester ? htl.html`<span>${shown.length} of ${requests.length} requests, by ${selectedRequester}</span>` : "";
+  return htl.html`<div class="bw-requests-key">${sizes}${filter}</div>`;
+}
+
+const LEGEND_MARKERS = {
+  dot: (color) => htl.svg`<svg width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="4" fill="${color}"></circle></svg>`,
+  swatch: (color, alpha) => htl.svg`<svg width="10" height="10" aria-hidden="true"><rect width="10" height="10" rx="2" fill="${color}" fill-opacity="${Math.min(1, alpha + 0.2)}"></rect></svg>`,
+  event: () => htl.svg`<svg width="18" height="10" aria-hidden="true"><path d="M0 5H18" stroke="currentColor" stroke-opacity="0.6" stroke-width="1.4" stroke-dasharray="2 3"></path></svg>`
+};
+const EVENT_LEGEND = {title: "Event", entries: [{key: BUG_KEY, title: "Backfill priority set to very-low (bug 1677741)", marker: () => LEGEND_MARKERS.event()}]};
+// The buckets of the platform's requests, coloured like the dots in them.
+const requestsLegend = (requests) => {
+  const maxProfiles = d3.max(requests, (r) => r.profiles);
+  const entries = PROFILE_BUCKETS.flatMap((bucket) => {
+    const inBucket = requests.filter((r) => bucket.has(r.profiles));
+    return inBucket.length ? [{key: bucket.key, title: bucket.title, marker: () => LEGEND_MARKERS.dot(profileColor(d3.max(inBucket, (r) => r.profiles), maxProfiles))}] : [];
+  });
+  return [{title: "Profile generations", entries}, EVENT_LEGEND];
+};
+
+// A row of buttons, each hiding or showing its entry, and a title that hides or
+// shows them all. Double-clicking an entry shows only that one of the row, or all
+// of them again if it already was the only one. The keys of a chart's legend are
+// its own, so that hiding a series in one chart leaves the same series of another
+// in place.
+function legendRow({title, entries}, hidden, scope, otherGroups = []) {
+  const keyOf = (key) => `${scope}:${key}`;
+  const keys = entries.map((entry) => keyOf(entry.key));
+  const anyVisible = keys.some((key) => !hidden.has(key));
+  const titleButton = htl.html`<button type="button" class="bw-legend-title" aria-pressed="${String(anyVisible)}">${title}</button>`;
+  // Double-clicking the title shows only this group of the legend, or all of them
+  // again if it already was the only one.
+  const otherKeys = otherGroups.flatMap((group) => group.entries.map((entry) => keyOf(entry.key)));
+  const showOnlyGroup = () => {
+    const alone = otherKeys.every((other) => hidden.has(other));
+    setHiddenKeys(alone ? [] : otherKeys, [...keys, ...(alone ? otherKeys : [])]);
+  };
+  titleButton.onclick = (event) => (event.detail === 2 ? showOnlyGroup() : setHidden(keys, anyVisible));
+  const showOnly = (key) => {
+    const others = keys.filter((other) => other !== key);
+    const alone = others.every((other) => hidden.has(other));
+    setHiddenKeys(alone ? [] : others, [key, ...(alone ? others : [])]);
+  };
+  return htl.html`<div class="bw-legend">${titleButton}${entries.map(({key, title, marker}) => {
+    const button = htl.html`<button type="button" aria-pressed="${String(!hidden.has(keyOf(key)))}">${marker()}${title}</button>`;
+    // The first click of a double click toggles the entry, and the second shows it alone.
+    button.onclick = (event) => (event.detail === 2 ? showOnly(keyOf(key)) : setHidden([keyOf(key)], !hidden.has(keyOf(key))));
+    return button;
+  })}</div>`;
+}
+
+const legendRows = (groups, hidden, scope) =>
+  htl.html`<div class="bw-legends bw-chart-legends">${groups.map((group) => legendRow(group, hidden, scope, groups.filter((other) => other !== group)))}</div>`;
 
 // A chart in a box that tells where its plot area is: `left` and `right` pixels
 // from the edges. Charts of different sizes share the time axis through it, in the
@@ -242,7 +523,7 @@ function syncCharts(section, domain, select) {
   });
 }
 
-const CHARTS = [METRICS_TITLE];
+const CHARTS = [METRICS_TITLE, REQUESTS_TITLE];
 
 const METRIC_HEIGHT = 84;
 const METRIC_TOP = 18;
@@ -326,7 +607,7 @@ function metricTile(metric, {requests, domain, tileWidth}) {
     const content = htl.html`<span><b>${formatDay(entry.day)}</b></span>
       ${metric.series.map(line)}
       ${metric.key === "requests" ? "" : htl.html`<span class="bw-tt-pool">${countOf(entry.requests.length, "backfill request")}</span>`}`;
-    openTooltip(event, `${metric.key}:${+entry.day}`, content);
+    if (openTooltip(event, `${metric.key}:${+entry.day}`, content)) document.getElementById("bw-ring").style.display = "none";
   };
   attachPlotHover(plot, find, show);
   const totalOf = (series) => {
@@ -356,7 +637,12 @@ function metricsRow({requests, domain, width}) {
   })}</div>`;
 }
 
-// The platform's charts, each as wide as the page and collapsed from its title.
+// The platform's charts, each as wide as the page and collapsed from its title:
+// what its backfill requests triggered. Each has its own legend under its title,
+// and its own hidden keys, `<chart key>:<key>`. A collapsed chart's key is its own
+// chart key.
+const blockCache = new Map();
+
 function platformSection(pool, width, hidden, selectedRequester, domain) {
   const requests = requestsByPool.get(pool)?.filter((request) => inDomain(domain, +request.time));
   const shown = selectedRequester ? requests?.filter((r) => r.requester === selectedRequester) : requests;
@@ -366,13 +652,34 @@ function platformSection(pool, width, hidden, selectedRequester, domain) {
       : !requests.length
         ? htl.html`<p class="bw-note">No backfill requests in this range.</p>`
         : null;
+  const requestChart = (drawKey, draw, height, hidden) =>
+    noRequests() ?? htl.html`${drawKey(requests, shown, selectedRequester)}${chartBox(draw({requests, shown, width, hidden, domain}), height)}`;
   const bodies = {
-    "chart-metrics": {draw: () => noRequests() ?? metricsRow({requests: shown, domain, width})}
+    "chart-metrics": {legend: () => null, draw: () => noRequests() ?? metricsRow({requests: shown, domain, width})},
+    "chart-requests": {legend: () => requests && requestsLegend(requests), draw: (hidden) => requestChart(requestsKey, requestsChart, REQUESTS_HEIGHT, hidden)}
   };
+  // A chart is drawn again only when something it shows changed: its own hidden keys,
+  // whether it is collapsed, the platform, requester, days or width. Hiding a series
+  // in one chart leaves the others as they were, so they do not flash or cost time.
   const block = (item) => {
     const collapsed = hidden.has(item.chartKey);
+    const prefix = `${item.chartKey}:`;
+    const ownKeys = [...hidden].filter((key) => key.startsWith(prefix)).sort();
+    const signature = JSON.stringify([pool, width, +domain[0], +domain[1], selectedRequester, collapsed, ownKeys]);
+    const cached = blockCache.get(item.chartKey);
+    if (cached?.signature === signature) return cached.node;
     const title = columnTitles(width, item, collapsed);
-    return htl.html`<div>${title}${collapsed ? "" : bodies[item.chartKey].draw()}</div>`;
+    let node;
+    if (collapsed) {
+      node = htl.html`<div>${title}</div>`;
+    } else {
+      const {legend, draw} = bodies[item.chartKey];
+      const groups = legend();
+      const ownHidden = {has: (key) => hidden.has(`${item.chartKey}:${key}`)};
+      node = htl.html`<div>${title}${groups ? legendRows(groups, hidden, item.chartKey) : ""}${draw(ownHidden)}</div>`;
+    }
+    blockCache.set(item.chartKey, {signature, node});
+    return node;
   };
   const section = htl.html`<section class="bw-pool">${CHARTS.map(block)}</section>`;
   syncCharts(section, domain, (from, to) => setRange(d3.utcDay.floor(from), d3.utcDay.floor(new Date(Math.max(+from, +to - 1)))));
@@ -389,6 +696,42 @@ function columnTitles(width, {chartKey, title}, collapsed) {
 ```
 
 <style>
+.bw-legends {
+  margin: 0.75rem 0 1.25rem;
+  font-family: var(--sans-serif);
+}
+.bw-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 1.25rem;
+  margin: 0.35rem 0;
+  font-size: 0.85rem;
+  color: var(--theme-foreground-muted, #888);
+}
+.bw-legend button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.bw-legend button.bw-legend-title {
+  min-width: 9rem;
+  justify-content: flex-start;
+  font-weight: 600;
+}
+.bw-legend button:hover {
+  color: var(--theme-foreground, #000);
+}
+.bw-legend button[aria-pressed="false"] {
+  opacity: 0.4;
+  text-decoration: line-through;
+}
 .bw-title {
   box-sizing: border-box;
   margin: 0;
@@ -415,9 +758,42 @@ function columnTitles(width, {chartKey, title}, collapsed) {
   width: 1em;
   color: var(--theme-foreground-muted, #888);
 }
+.bw-chart-legends {
+  margin: 0.25rem 0 0.5rem;
+  padding: 0 40px 0 44px;
+}
+.bw-requests-key {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 1.5rem;
+  padding: 0 40px 0 44px;
+  font-size: 0.8rem;
+  color: var(--theme-foreground-muted, #888);
+}
+.bw-requests-key > * {
+  margin: 0;
+}
+.bw-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.bw-key .bw-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
 .bw-note {
   margin: 1rem 0 0;
   color: var(--theme-foreground-muted, #888);
+}
+.bw-timeline-banner {
+  margin: 0.75rem 0;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid var(--theme-foreground-faintest, #ddd);
+  border-radius: 6px;
 }
 .bw-filters > div {
   display: flex;
@@ -536,9 +912,25 @@ function columnTitles(width, {chartKey, title}, collapsed) {
   font-size: 10px;
   white-space: nowrap;
 }
+#bw-tooltip .bw-tt-links a {
+  display: inline;
+  margin-right: 0.6em;
+}
+#bw-ring {
+  position: fixed;
+  z-index: 999;
+  display: none;
+  width: 12px;
+  height: 12px;
+  transform: translate(-50%, -50%);
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  pointer-events: none;
+}
 </style>
 
 <div id="bw-tooltip"></div>
+<div id="bw-ring"></div>
 
 ```js
 // The platform is seeded from ?platform= so a link reproduces the view. Kept
@@ -549,9 +941,9 @@ const platform = Generators.input(platformInput);
 ```
 
 ```js
-// Limits the charts to one requester. It lists the requesters of the platform, so
-// it is rebuilt when the platform changes, keeping the requester if the new
-// platform has them too.
+// Limits the requests chart to one requester, chosen here or by clicking a name
+// in a tooltip. It lists the requesters of the platform, so it is rebuilt when
+// the platform changes, keeping the requester if the new platform has them too.
 const requesterCounts = d3.rollups(requestsByPool.get(platform) ?? [], (group) => group.length, (r) => r.requester).sort((a, b) => b[1] - a[1]);
 const urlRequester = new URLSearchParams(window.location.search).get("requester");
 const requesterInput = Inputs.select(new Map([["Everyone", ""], ...requesterCounts.map(([name, n]) => [`${name} (${n})`, name])]), {
@@ -560,6 +952,12 @@ const requesterInput = Inputs.select(new Map([["Everyone", ""], ...requesterCoun
   disabled: !requesterCounts.length
 });
 const requester = Generators.input(requesterInput);
+const chooseRequester = ({detail}) => {
+  requesterInput.value = detail;
+  requesterInput.dispatchEvent(new Event("input", {bubbles: true}));
+};
+document.addEventListener("bw-requester", chooseRequester);
+invalidation.then(() => document.removeEventListener("bw-requester", chooseRequester));
 ```
 
 ```js
@@ -600,6 +998,17 @@ const domain = (() => {
 resetButton.disabled = +domain[0] === +DATA_FIRST_DAY && +domain[1] === +dayAfter(DATA_LAST_DAY);
 ```
 
+```js
+// A link in a profile opens the page with ?timeline=<task id>. The profiler can
+// only be opened from a click, so the page offers it.
+{
+  const taskId = new URLSearchParams(window.location.search).get("timeline");
+  if (/^[A-Za-z0-9_-]{22}$/.test(taskId ?? "")) {
+    display(htl.html`<div class="bw-timeline-banner">Dependency timeline of <code>${taskId}</code>: ${dependencyTimelineLink({task_id: taskId}, "→ Open it in the Firefox Profiler")}</div>`);
+  }
+}
+```
+
 <div class="bw-filters"><div>${platformInput}${requesterInput}</div><div>${fromInput}${toInput}${resetButton}</div></div>
 
 ```js
@@ -617,8 +1026,8 @@ resetButton.disabled = +domain[0] === +DATA_FIRST_DAY && +domain[1] === +dayAfte
 ```
 
 ```js
-// The keys of the collapsed charts. Every chart title writes them to this element,
-// and the charts redraw when it changes.
+// The keys of the hidden series and charts. Every legend button writes them to
+// this element, and the charts redraw when it changes.
 const hiddenInput = Object.assign(document.createElement("div"), {value: new Set()});
 const hidden = Generators.input(hiddenInput);
 // Redrawing replaces the charts, which for a moment leaves the page shorter and
