@@ -41,7 +41,8 @@ export default {
       open: true,
       pages: [
         {name: "MacOS Test Pools", path: "/macos-test-pools"},
-        {name: "Pending Times", path: "/pending-times"}
+        {name: "Pending Times", path: "/pending-times"},
+        {name: "Perf backfill waits", path: "/backfill-waits"}
       ]
     }
   ],

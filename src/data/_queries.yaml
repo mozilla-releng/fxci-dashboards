@@ -57,3 +57,8 @@
   title: "Pending Times: daily pending-time histogram by pool, project and priority, plus deadline-exceeded counts"
   queryId: 126751
   secretEnv: REDASH_API_KEY_PENDING_TIMES
+
+- name: backfill-requests
+  title: "Backfill Waits: backfill requests with the tests, builds and profile generations each triggered"
+  queryId: 132186
+  secretEnv: REDASH_API_KEY_PERF_BACKFILL_REQUESTS
