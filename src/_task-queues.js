@@ -1,4 +1,4 @@
-// Every run that went through the task queues of the backfill-waits page, one row per
+// Every run that went through the task queues of the perf-backfill-waits page, one row per
 // run, for the "Gantt of the queue" profiles. Imported by the page, the data loader,
 // the build config and the script that writes the SQL, so that they agree on the
 // queues, the days and the files.

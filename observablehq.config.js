@@ -47,7 +47,7 @@ export default {
       pages: [
         {name: "MacOS Test Pools", path: "/macos-test-pools"},
         {name: "Pending Times", path: "/pending-times"},
-        {name: "Perf backfill waits", path: "/backfill-waits"}
+        {name: "Perf backfill waits", path: "/perf-backfill-waits"}
       ]
     }
   ],
