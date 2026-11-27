@@ -1,5 +1,10 @@
 .DS_Store
+
 /dist/
 node_modules/
 src/.observablehq/cache/
 yarn-error.log
+
+.claude/.cc-writes/
+.claude/worktrees/
+*.local.*
