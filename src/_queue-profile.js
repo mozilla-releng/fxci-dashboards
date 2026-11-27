@@ -1,16 +1,7 @@
+import {openProfile} from "./_profiler.js";
 import {indexQueueSeries, KINDS, KIND_TITLES, LAYERS, queuedPerBucket, TIERS} from "./_queue-position.js";
 import {hasRunRows, queuedRuns} from "./_task-rows.js";
-import {
-  clockIntervals,
-  formatClockTime,
-  injectProfile,
-  layerColor,
-  markerTable,
-  PROFILER_POST_URL,
-  processedProfile,
-  thread,
-  UPSTREAM_ORDER
-} from "./_task-profile.js";
+import {clockIntervals, formatClockTime, layerColor, markerTable, processedProfile, thread, UPSTREAM_ORDER} from "./_task-profile.js";
 
 const BIN_SECONDS = 300;
 const BIN_MS = BIN_SECONDS * 1000;
@@ -309,19 +300,9 @@ export function buildQueueProfile({queueTable, queue, roles, centerMs, firstMs, 
 
 // The runs are read from the per-run files when the queue and day have them, and
 // otherwise the Gantt has the counts of the queue series.
-export async function openQueueGantt(options) {
-  const profilerWindow = window.open(PROFILER_POST_URL, "_blank");
-  try {
+export const openQueueGantt = (options) =>
+  openProfile(async () => {
     const {fromMs, toMs} = queueWindow(options);
     const runs = hasRunRows(options.queue, fromMs, toMs) ? await queuedRuns(options.queue, fromMs, toMs) : null;
-    const profile = buildQueueProfile({...options, runs});
-    if (!profilerWindow) {
-      return {opened: false, downloadUrl: URL.createObjectURL(new Blob([JSON.stringify(profile)], {type: "application/json"}))};
-    }
-    await injectProfile(profilerWindow, profile);
-    return {opened: true};
-  } catch (error) {
-    profilerWindow?.close();
-    throw error;
-  }
-}
+    return buildQueueProfile({...options, runs});
+  });

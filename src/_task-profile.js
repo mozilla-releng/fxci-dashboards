@@ -1,10 +1,9 @@
+import {openProfile} from "./_profiler.js";
 import {aheadSeries, indexQueueSeries, LAYERS} from "./_queue-position.js";
 
 const TC_URL = "https://firefox-ci-tc.services.mozilla.com";
 const QUEUE_API = `${TC_URL}/api/queue/v1`;
 const QUEUE_URL = `${QUEUE_API}/task`;
-const PROFILER_ORIGIN = "https://profiler.firefox.com";
-export const PROFILER_POST_URL = `${PROFILER_ORIGIN}/from-post-message/`;
 
 const PROCESSED_PROFILE_VERSION = 77;
 const REQUEST_CONCURRENCY = 8;
@@ -15,8 +14,6 @@ const WINDOW_LEAD_MS = 3600_000;
 const HOUR_MS = 3600_000;
 const DAY_MS = 86400_000;
 const MAX_POOL_DAYS = 4;
-const HANDSHAKE_INTERVAL_MS = 250;
-const HANDSHAKE_TIMEOUT_MS = 30_000;
 
 // Zero-width characters in increasing code point order: a row name starting with
 // the n-th one sorts after the names starting with the ones before it, and shows
@@ -508,34 +505,6 @@ export function poolActivityDays(fromMs, toMs, urlForDate) {
   return urls;
 }
 
-export function injectProfile(profilerWindow, profile) {
-  return new Promise((resolve, reject) => {
-    const startedAt = Date.now();
-    const stop = () => {
-      clearInterval(poll);
-      window.removeEventListener("message", onMessage);
-    };
-    const onMessage = (event) => {
-      if (event.origin !== PROFILER_ORIGIN || event.data?.name !== "ready:response") return;
-      stop();
-      profilerWindow.postMessage({name: "inject-profile", profile}, PROFILER_ORIGIN);
-      resolve();
-    };
-    const poll = setInterval(() => {
-      if (profilerWindow.closed) {
-        stop();
-        reject(new Error("the profiler window was closed"));
-      } else if (Date.now() - startedAt > HANDSHAKE_TIMEOUT_MS) {
-        stop();
-        reject(new Error("the profiler did not answer"));
-      } else {
-        profilerWindow.postMessage({name: "ready:request"}, PROFILER_ORIGIN);
-      }
-    }, HANDSHAKE_INTERVAL_MS);
-    window.addEventListener("message", onMessage);
-  });
-}
-
 const DOWNSTREAM_TITLE = {heading: "Downstream tasks of", describe: "the actions it started and the tests, builds and profile generations they created"};
 
 // The request's own task and the tasks it triggered, listed by the caller. Rows
@@ -559,18 +528,5 @@ export const openDependencyTimeline = ({taskId, poolActivityUrls, timelineUrl = 
 export const openDownstreamTimeline = ({requestId, taskIds, pushGroups, poolActivityUrls, timelineUrl = null, queueTable = null, onProgress}) =>
   openTimeline(() => fetchDownstream({requestId, taskIds, pushGroups}, onProgress), {poolActivityUrls, timelineUrl, queueTable});
 
-async function openTimeline(fetchTasks, {poolActivityUrls, timelineUrl, queueTable}) {
-  const profilerWindow = window.open(PROFILER_POST_URL, "_blank");
-  try {
-    const chain = await fetchTasks();
-    const profile = buildProfile(chain, {poolActivityUrls, timelineUrl, queueSeries: queueTable ? indexQueueSeries(queueTable) : null});
-    if (!profilerWindow) {
-      return {opened: false, downloadUrl: URL.createObjectURL(new Blob([JSON.stringify(profile)], {type: "application/json"}))};
-    }
-    await injectProfile(profilerWindow, profile);
-    return {opened: true};
-  } catch (error) {
-    profilerWindow?.close();
-    throw error;
-  }
-}
+const openTimeline = (fetchTasks, {poolActivityUrls, timelineUrl, queueTable}) =>
+  openProfile(async () => buildProfile(await fetchTasks(), {poolActivityUrls, timelineUrl, queueSeries: queueTable ? indexQueueSeries(queueTable) : null}));
