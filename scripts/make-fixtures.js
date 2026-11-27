@@ -8,27 +8,12 @@ import {join} from "node:path";
 import {fileURLToPath} from "node:url";
 import {load} from "js-yaml";
 import {FIRST_DAY, LAST_DAY, TASK_CHUNKS} from "../src/_task-queues.js";
+import {between, pick, random, revision, taskId} from "./fixture-random.js";
+import {NIGHTLY_TABLES} from "./nightly-fixtures.js";
 
 const DAY = 86400;
 const FIRST_S = Date.parse(`${FIRST_DAY}T00:00:00Z`) / 1000;
 const LAST_S = Date.parse(`${LAST_DAY}T00:00:00Z`) / 1000 + DAY;
-
-export function random(seed) {
-  let state = seed >>> 0;
-  return () => {
-    state = (state + 0x6d2b79f5) >>> 0;
-    let t = state;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-";
-const taskId = (rand) => Array.from({length: 22}, () => ALPHABET[Math.floor(rand() * 64)]).join("");
-const revision = (rand) => Array.from({length: 40}, () => Math.floor(rand() * 16).toString(16)).join("");
-const between = (rand, low, high) => low + Math.floor(rand() * (high - low + 1));
-const pick = (rand, list) => list[Math.floor(rand() * list.length)];
 
 const POOLS = {
   "Linux talos": {queue: "releng-hardware/gecko-t-linux-talos-2404", platform: "linux2404-64", builds: "linux64", workers: 30},
@@ -172,7 +157,8 @@ function queue() {
 export const TABLES = {
   "backfill-requests": requests,
   "backfill-load": poolLoad,
-  "backfill-queue": queue
+  "backfill-queue": queue,
+  ...NIGHTLY_TABLES
 };
 
 export function makeFixtures(dir) {

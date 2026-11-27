@@ -47,6 +47,9 @@ const STYLES = `
   font-size: 0.9em;
   color: #bbb;
 }
+#bw-tooltip .bw-tt-sub {
+  padding-left: 16px;
+}
 #bw-tooltip .bw-swatch {
   display: inline-block;
   width: 10px;

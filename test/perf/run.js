@@ -77,7 +77,6 @@ async function runOnce(browser, origin, scenario, screenshot) {
     if (screenshot) await page.screenshot({path: screenshot, fullPage: true});
     const loadFrames = await framesSince(page, 0);
 
-    const interactionStart = await frameCount(page);
     const hovered = {};
     let hover_p95_ms = 0;
     for (const target of scenario.hover) {
@@ -85,8 +84,11 @@ async function runOnce(browser, origin, scenario, screenshot) {
       hovered[target.name] = {tooltips};
       hover_p95_ms = Math.max(hover_p95_ms, percentile(times, 0.95));
     }
-    const pinned = await pin(page, {selector: scenario.charts, index: scenario.pin.chart, tooltip: scenario.tooltip, ring: scenario.ring});
-    const legendUse = await legend(page, {root: scenario.root, ...scenario.legend});
+    // A sweep of the pointer runs in one task, so a gap over it is the sum of its moves.
+    // The cost of a move is hover_p95_ms, and the gaps are those of what follows.
+    const interactionStart = await frameCount(page);
+    const pinned = scenario.pin ? await pin(page, {selector: scenario.charts, index: scenario.pin.chart, tooltip: scenario.tooltip, ring: scenario.ring}) : null;
+    const legendUse = scenario.legend ? await legend(page, {root: scenario.root, ...scenario.legend}) : null;
     const zoomed = await zoom(page, {selector: scenario.charts, index: scenario.zoom.chart, from: scenario.zoom.from, to: scenario.zoom.to, root: scenario.root});
     const after = await pageFacts(page, scenario);
     const interactionFrames = await framesSince(page, interactionStart);
@@ -167,7 +169,7 @@ async function main() {
 
   if (options.record) {
     const broken = ({errors, load, zoom, pin: pinned, legend: legendUse}) =>
-      errors.length || load.inlineErrors || zoom.inlineErrors || !(pinned.found && pinned.stays && pinned.releasedByEscape && pinned.releasedByClick) || !legendUse.restored;
+      errors.length || load.inlineErrors || zoom.inlineErrors || (pinned && !(pinned.found && pinned.stays && pinned.releasedByEscape && pinned.releasedByClick)) || (legendUse && !legendUse.restored);
     const failing = Object.entries(actual.scenarios).filter(([, facts]) => broken(facts));
     if (failing.length) throw new Error(`Not recording a run with page errors, a tooltip that does not pin and release, or a legend that does not restore: ${failing.map(([name]) => name).join(", ")}`);
     writeFileSync(EXPECTED, `${JSON.stringify(actual, null, 2)}\n`);

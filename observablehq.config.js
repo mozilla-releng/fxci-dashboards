@@ -42,6 +42,13 @@ export default {
       ]
     },
     {
+      name: "Landing",
+      open: true,
+      pages: [
+        {name: "Ship to Nightly faster", path: "/ship-to-nightly"}
+      ]
+    },
+    {
       name: "Worker Pools",
       open: true,
       pages: [

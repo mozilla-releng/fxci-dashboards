@@ -8,6 +8,7 @@ import {readFileSync} from "node:fs";
 import {load} from "js-yaml";
 import {fetchRows} from "./_stmo.js";
 import {rowsToParquet} from "./_parquet.js";
+import {checkShape} from "./_shape.js";
 
 const {
   values: {name}
@@ -18,4 +19,5 @@ const entry = queries.find((q) => q.name === name);
 if (!entry) throw new Error(`No _queries.yaml entry named "${name}"`);
 
 const rows = await fetchRows(entry.queryId, entry.secretEnv);
+checkShape(entry, rows);
 process.stdout.write(rowsToParquet(rows));

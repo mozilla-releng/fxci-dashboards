@@ -104,8 +104,9 @@ function metricTile(metric, {items, domain, tileWidth, tooltip, timeOf, noun, ev
   };
   attachPlotHover(tooltip, plot, find, show);
   const totalOf = (series) => {
-    const total = series.value(items);
-    return total == null ? "–" : metric.format(total);
+    const {value, format} = metric.headline ?? {value: series.value, format: metric.format};
+    const total = value(items, days.length);
+    return total == null ? "–" : format(total);
   };
   const values = single
     ? html`<div class="bw-metric-value">${totalOf(metric.series[0])}</div>`

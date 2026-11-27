@@ -20,7 +20,10 @@ build-time snapshots of STMO data, not a live app.
    Output is Parquet rather than JSON since some of these queries are large
    enough (tens of MB) that plain JSON loads fine from the local dev server
    but fails to fetch once deployed — Parquet's columnar encoding shrinks
-   that dramatically.
+   that dramatically. The row may also list the `columns` the page reads and
+   the `minRows` of a healthy result: the build fails when the result lacks a
+   column or is shorter, so the last good site stays up instead of an empty
+   dashboard being deployed.
 3. Add (or extend) `src/<name>.md` that reads
    `(await FileAttachment("data/<name>.parquet").parquet()).toArray()` and
    renders it with `Plot` / `Inputs` (implicit globals, no import needed).

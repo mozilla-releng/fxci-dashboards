@@ -73,6 +73,23 @@
   queryId: 132186
   secretEnv: REDASH_API_KEY_PERF_BACKFILL_REQUESTS
 
+# `columns` and `minRows` are optional. The loader fails the build when the result lacks
+# one of the columns or has fewer rows, so a deploy that would show an empty or changed
+# dashboard stops and the last good site stays up.
+- name: nightly-journeys
+  title: "Ship to Nightly faster: journeys of landed revisions"
+  queryId: 132280
+  secretEnv: REDASH_API_KEY_SHIP_TO_NIGHTLY_JOURNEYS
+  minRows: 5000
+  columns: [revision_id, bug_id, job_id, stack_size, stack_index, requested_by, failed_attempts, git_rev, hg_rev, autoland_rev, central_rev, merged_by, phab_created_s, phab_approved_s, land_requested_s, lando_started_s, autoland_pushed_s, merged_s, autoland_ci_done_s, central_ci_done_s, nightly_started_s, nightly_published_s, nightly_decision_id, nightly_last_task_id, queue_closed_s, autoland_closed_s, backed_out, backout_by, backout_s, lando_until_s, treeherder_until_s, fxci_until_s, commit_maps_until_s]
+
+- name: nightly-treestatus
+  title: "Ship to Nightly faster: autoland tree closures"
+  queryId: 132278
+  secretEnv: REDASH_API_KEY_SHIP_TO_NIGHTLY_TREESTATUS
+  minRows: 100
+  columns: [start_s, end_s, status, reason_tag, backouts]
+
 # The six below are `archive` queries: every run of some task queues, one row
 # per run, about a million rows each. Their loader (data/tasks/[chunk].tar.js)
 # writes one Parquet file per queue and week instead of one data/<name>.parquet.

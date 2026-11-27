@@ -41,13 +41,13 @@
         ],
         "svgs": 52,
         "circles": 485,
-        "lines": 3337,
-        "paths": 136,
+        "lines": 48,
+        "paths": 149,
         "anchors": 0,
-        "nodes": 4378,
-        "bodyNodes": 4482,
+        "nodes": 1102,
+        "bodyNodes": 1211,
         "inlineErrors": 0,
-        "html": "0a2861d04988de78",
+        "html": "e5945a3d85b143db",
         "styles": "72563aab821af694"
       },
       "hover": {
@@ -102,9 +102,9 @@
           ],
           "charts": 1,
           "circles": 329,
-          "lines": 3337,
-          "nodes": 4222,
-          "html": "90b8eaa1fb820933",
+          "lines": 48,
+          "nodes": 946,
+          "html": "7c49aa7117111c3c",
           "styles": "090b7e5024098452"
         },
         "shown": {
@@ -117,9 +117,9 @@
           ],
           "charts": 1,
           "circles": 485,
-          "lines": 3337,
-          "nodes": 4378,
-          "html": "c03cca1801cde5ec",
+          "lines": 48,
+          "nodes": 1102,
+          "html": "4a78e2621591b842",
           "styles": "18c2a496999101f5"
         },
         "alone": {
@@ -132,9 +132,9 @@
           ],
           "charts": 1,
           "circles": 263,
-          "lines": 3337,
-          "nodes": 4156,
-          "html": "241728ad5e023546",
+          "lines": 48,
+          "nodes": 880,
+          "html": "289d112c2ee47374",
           "styles": "e0741548072529dd"
         },
         "all": {
@@ -147,18 +147,18 @@
           ],
           "charts": 1,
           "circles": 485,
-          "lines": 3337,
-          "nodes": 4378,
-          "html": "c03cca1801cde5ec",
+          "lines": 48,
+          "nodes": 1102,
+          "html": "4a78e2621591b842",
           "styles": "18c2a496999101f5"
         },
         "collapsed": {
           "pressed": [],
           "charts": 0,
           "circles": 218,
-          "lines": 3330,
-          "nodes": 4042,
-          "html": "3970b1146ac572d1",
+          "lines": 41,
+          "nodes": 766,
+          "html": "9ac3dd80804b7ff9",
           "styles": "3e3b03c9ec4f5f5b"
         },
         "expanded": {
@@ -171,9 +171,9 @@
           ],
           "charts": 1,
           "circles": 485,
-          "lines": 3337,
-          "nodes": 4378,
-          "html": "c03cca1801cde5ec",
+          "lines": 48,
+          "nodes": 1102,
+          "html": "4a78e2621591b842",
           "styles": "18c2a496999101f5"
         },
         "restored": true
@@ -215,13 +215,13 @@
         ],
         "svgs": 52,
         "circles": 163,
-        "lines": 1076,
-        "paths": 114,
+        "lines": 36,
+        "paths": 127,
         "anchors": 0,
-        "nodes": 1766,
-        "bodyNodes": 1885,
+        "nodes": 739,
+        "bodyNodes": 863,
         "inlineErrors": 0,
-        "html": "36329cfb593783a5",
+        "html": "f7656c69f3756b5e",
         "styles": "72563aab821af694"
       },
       "errors": []
@@ -260,13 +260,13 @@
         ],
         "svgs": 52,
         "circles": 30,
-        "lines": 220,
-        "paths": 129,
+        "lines": 51,
+        "paths": 142,
         "anchors": 0,
-        "nodes": 826,
-        "bodyNodes": 930,
+        "nodes": 670,
+        "bodyNodes": 779,
         "inlineErrors": 0,
-        "html": "0ecdf834a644cde6",
+        "html": "43d952c197607bcf",
         "styles": "7b9b1c2ebf662504"
       },
       "hover": {
@@ -320,9 +320,9 @@
           ],
           "charts": 1,
           "circles": 22,
-          "lines": 220,
-          "nodes": 818,
-          "html": "73160ab73ad2d0e4",
+          "lines": 51,
+          "nodes": 662,
+          "html": "1acd620bf6c077da",
           "styles": "59598c9ec4c78823"
         },
         "shown": {
@@ -334,9 +334,9 @@
           ],
           "charts": 1,
           "circles": 30,
-          "lines": 220,
-          "nodes": 826,
-          "html": "24dc687f4fa19874",
+          "lines": 51,
+          "nodes": 670,
+          "html": "422004390d7e356d",
           "styles": "7b9b1c2ebf662504"
         },
         "alone": {
@@ -348,9 +348,9 @@
           ],
           "charts": 1,
           "circles": 21,
-          "lines": 220,
-          "nodes": 817,
-          "html": "53e4e0764abfa9f7",
+          "lines": 51,
+          "nodes": 661,
+          "html": "ff1d82974c74a5eb",
           "styles": "23f91f98223be932"
         },
         "all": {
@@ -362,18 +362,18 @@
           ],
           "charts": 1,
           "circles": 30,
-          "lines": 220,
-          "nodes": 826,
-          "html": "24dc687f4fa19874",
+          "lines": 51,
+          "nodes": 670,
+          "html": "422004390d7e356d",
           "styles": "7b9b1c2ebf662504"
         },
         "collapsed": {
           "pressed": [],
           "charts": 0,
           "circles": 11,
-          "lines": 214,
-          "nodes": 741,
-          "html": "fecde329fae02f15",
+          "lines": 45,
+          "nodes": 585,
+          "html": "7beb0dc96167cecc",
           "styles": "629c943484c1d7d1"
         },
         "expanded": {
@@ -385,9 +385,9 @@
           ],
           "charts": 1,
           "circles": 30,
-          "lines": 220,
-          "nodes": 826,
-          "html": "24dc687f4fa19874",
+          "lines": 51,
+          "nodes": 670,
+          "html": "422004390d7e356d",
           "styles": "7b9b1c2ebf662504"
         },
         "restored": true
@@ -429,14 +429,1142 @@
         ],
         "svgs": 49,
         "circles": 12,
-        "lines": 98,
-        "paths": 94,
+        "lines": 46,
+        "paths": 107,
         "anchors": 0,
-        "nodes": 606,
-        "bodyNodes": 725,
+        "nodes": 567,
+        "bodyNodes": 691,
         "inlineErrors": 0,
-        "html": "0cbe040fc941f474",
+        "html": "5558dfc12e8d40b5",
         "styles": "25d1e9cb09a46e50"
+      },
+      "errors": []
+    },
+    "ship-to-nightly, the last 90 days": {
+      "load": {
+        "tiles": [
+          [
+            "Land to published in a Nightly",
+            "p50 13 h 43 min p90 25 h 26 min p99 64 h 47 min"
+          ],
+          [
+            "Revisions landed per day",
+            "250"
+          ],
+          [
+            "Waiting in the Lando queue",
+            "p50 5 min p95 1 h 30 min"
+          ],
+          [
+            "CI on autoland",
+            "p50 2 h 25 min p95 3 h 51 min"
+          ],
+          [
+            "On autoland until merged to main",
+            "p50 3 h 8 min p95 21 h 25 min"
+          ],
+          [
+            "CI on main",
+            "p50 10 h 37 min p95 20 h 15 min"
+          ],
+          [
+            "Merged to main until its Nightly starts",
+            "p50 5 h 40 min p95 15 h 31 min"
+          ],
+          [
+            "Nightly build and publish",
+            "p50 2 h 23 min p95 3 h 7 min"
+          ],
+          [
+            "Merges to main",
+            "324"
+          ],
+          [
+            "Autoland tree closed",
+            "29.6d"
+          ],
+          [
+            "Revisions backed out",
+            "6.9%"
+          ],
+          [
+            "Backed out after a Nightly had published them",
+            "11"
+          ]
+        ],
+        "svgs": 28,
+        "circles": 262,
+        "lines": 33,
+        "paths": 1608,
+        "anchors": 0,
+        "nodes": 3063,
+        "bodyNodes": 3196,
+        "inlineErrors": 0,
+        "html": "693903c0c96d83bc",
+        "styles": "a573323339aab309"
+      },
+      "hover": {
+        "end to end": {
+          "tooltips": 62
+        },
+        "stages": {
+          "tooltips": 46
+        },
+        "candles": {
+          "tooltips": 192
+        }
+      },
+      "pin": {
+        "found": true,
+        "stays": true,
+        "releasedByEscape": true,
+        "releasedByClick": true,
+        "tooltip": {
+          "position": "fixed",
+          "zIndex": "1000",
+          "maxWidth": "520px",
+          "paddingTop": "8px",
+          "paddingLeft": "12px",
+          "borderTopLeftRadius": "4px",
+          "backgroundColor": "rgb(42, 42, 42)",
+          "color": "rgb(255, 255, 255)",
+          "fontFamily": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif",
+          "fontSize": "13px",
+          "lineHeight": "22.1px",
+          "display": "block"
+        },
+        "ring": {
+          "position": "fixed",
+          "zIndex": "999",
+          "width": "12px",
+          "height": "12px",
+          "borderTopWidth": "1px",
+          "borderTopColor": "rgb(27, 30, 35)",
+          "borderTopLeftRadius": "50%",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)",
+          "pointerEvents": "none",
+          "display": "none"
+        },
+        "content": "c77b35bec69c5e9a"
+      },
+      "legend": {
+        "hidden": {
+          "pressed": [
+            "true",
+            "false",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true"
+          ],
+          "charts": 1,
+          "circles": 262,
+          "lines": 33,
+          "nodes": 3062,
+          "html": "6a799804204a6a19",
+          "styles": "95c4e77731132bae"
+        },
+        "shown": {
+          "pressed": [
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true"
+          ],
+          "charts": 1,
+          "circles": 262,
+          "lines": 33,
+          "nodes": 3063,
+          "html": "be019044f862392b",
+          "styles": "bb39161eb9994675"
+        },
+        "alone": {
+          "pressed": [
+            "true",
+            "false",
+            "true",
+            "false",
+            "false",
+            "false",
+            "false",
+            "false",
+            "false"
+          ],
+          "charts": 1,
+          "circles": 262,
+          "lines": 33,
+          "nodes": 3056,
+          "html": "e28d38d823636f5e",
+          "styles": "4587011607915135"
+        },
+        "all": {
+          "pressed": [
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true"
+          ],
+          "charts": 1,
+          "circles": 262,
+          "lines": 33,
+          "nodes": 3063,
+          "html": "be019044f862392b",
+          "styles": "bb39161eb9994675"
+        },
+        "collapsed": {
+          "pressed": [],
+          "charts": 0,
+          "circles": 0,
+          "lines": 24,
+          "nodes": 249,
+          "html": "45f3c23e1984d10d",
+          "styles": "bcc9a73a44f171a0"
+        },
+        "expanded": {
+          "pressed": [
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true"
+          ],
+          "charts": 1,
+          "circles": 262,
+          "lines": 33,
+          "nodes": 3063,
+          "html": "be019044f862392b",
+          "styles": "bb39161eb9994675"
+        },
+        "restored": true
+      },
+      "zoom": {
+        "range": [
+          "2026-09-06",
+          "2026-09-29"
+        ],
+        "tiles": [
+          [
+            "Land to published in a Nightly",
+            "p50 13 h 19 min p90 27 h 31 min p99 74 h 55 min"
+          ],
+          [
+            "Revisions landed per day",
+            "250"
+          ],
+          [
+            "Waiting in the Lando queue",
+            "p50 5 min p95 1 h 23 min"
+          ],
+          [
+            "CI on autoland",
+            "p50 2 h 28 min p95 3 h 50 min"
+          ],
+          [
+            "On autoland until merged to main",
+            "p50 3 h 0 min p95 18 h 14 min"
+          ],
+          [
+            "CI on main",
+            "p50 10 h 31 min p95 20 h 3 min"
+          ],
+          [
+            "Merged to main until its Nightly starts",
+            "p50 5 h 14 min p95 21 h 57 min"
+          ],
+          [
+            "Nightly build and publish",
+            "p50 2 h 18 min p95 3 h 9 min"
+          ],
+          [
+            "Merges to main",
+            "86"
+          ],
+          [
+            "Autoland tree closed",
+            "7.9d"
+          ],
+          [
+            "Revisions backed out",
+            "7%"
+          ],
+          [
+            "Backed out after a Nightly had published them",
+            "2"
+          ]
+        ],
+        "svgs": 28,
+        "circles": 0,
+        "lines": 21,
+        "paths": 473,
+        "anchors": 0,
+        "nodes": 991,
+        "bodyNodes": 1136,
+        "inlineErrors": 0,
+        "html": "8a4cd29a68846e55",
+        "styles": "a573323339aab309"
+      },
+      "errors": []
+    },
+    "ship-to-nightly, 30 days": {
+      "load": {
+        "tiles": [
+          [
+            "Land to published in a Nightly",
+            "p50 13 h 43 min p90 25 h 17 min p99 67 h 13 min"
+          ],
+          [
+            "Revisions landed per day",
+            "257"
+          ],
+          [
+            "Waiting in the Lando queue",
+            "p50 5 min p95 1 h 16 min"
+          ],
+          [
+            "CI on autoland",
+            "p50 2 h 23 min p95 3 h 51 min"
+          ],
+          [
+            "On autoland until merged to main",
+            "p50 3 h 9 min p95 32 h 1 min"
+          ],
+          [
+            "CI on main",
+            "p50 11 h 7 min p95 20 h 28 min"
+          ],
+          [
+            "Merged to main until its Nightly starts",
+            "p50 6 h 4 min p95 11 h 52 min"
+          ],
+          [
+            "Nightly build and publish",
+            "p50 2 h 27 min p95 3 h 7 min"
+          ],
+          [
+            "Merges to main",
+            "113"
+          ],
+          [
+            "Autoland tree closed",
+            "9.5d"
+          ],
+          [
+            "Revisions backed out",
+            "6.9%"
+          ],
+          [
+            "Backed out after a Nightly had published them",
+            "8"
+          ]
+        ],
+        "svgs": 28,
+        "circles": 262,
+        "lines": 34,
+        "paths": 583,
+        "anchors": 0,
+        "nodes": 1451,
+        "bodyNodes": 1584,
+        "inlineErrors": 0,
+        "html": "687d0a1e2603d1bf",
+        "styles": "a573323339aab309"
+      },
+      "hover": {
+        "end to end": {
+          "tooltips": 22
+        },
+        "stages": {
+          "tooltips": 16
+        },
+        "candles": {
+          "tooltips": 151
+        }
+      },
+      "pin": {
+        "found": true,
+        "stays": true,
+        "releasedByEscape": true,
+        "releasedByClick": true,
+        "tooltip": {
+          "position": "fixed",
+          "zIndex": "1000",
+          "maxWidth": "520px",
+          "paddingTop": "8px",
+          "paddingLeft": "12px",
+          "borderTopLeftRadius": "4px",
+          "backgroundColor": "rgb(42, 42, 42)",
+          "color": "rgb(255, 255, 255)",
+          "fontFamily": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif",
+          "fontSize": "13px",
+          "lineHeight": "22.1px",
+          "display": "block"
+        },
+        "ring": {
+          "position": "fixed",
+          "zIndex": "999",
+          "width": "12px",
+          "height": "12px",
+          "borderTopWidth": "1px",
+          "borderTopColor": "rgb(27, 30, 35)",
+          "borderTopLeftRadius": "50%",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)",
+          "pointerEvents": "none",
+          "display": "none"
+        },
+        "content": "86685af3f6af02d3"
+      },
+      "legend": {
+        "hidden": {
+          "pressed": [
+            "true",
+            "false",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true"
+          ],
+          "charts": 1,
+          "circles": 262,
+          "lines": 34,
+          "nodes": 1450,
+          "html": "b0b92f2a31dc0d36",
+          "styles": "95c4e77731132bae"
+        },
+        "shown": {
+          "pressed": [
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true"
+          ],
+          "charts": 1,
+          "circles": 262,
+          "lines": 34,
+          "nodes": 1451,
+          "html": "d10191bd43218879",
+          "styles": "bb39161eb9994675"
+        },
+        "alone": {
+          "pressed": [
+            "true",
+            "false",
+            "true",
+            "false",
+            "false",
+            "false",
+            "false",
+            "false",
+            "false"
+          ],
+          "charts": 1,
+          "circles": 262,
+          "lines": 34,
+          "nodes": 1444,
+          "html": "fb35a18551fbea11",
+          "styles": "4587011607915135"
+        },
+        "all": {
+          "pressed": [
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true"
+          ],
+          "charts": 1,
+          "circles": 262,
+          "lines": 34,
+          "nodes": 1451,
+          "html": "d10191bd43218879",
+          "styles": "bb39161eb9994675"
+        },
+        "collapsed": {
+          "pressed": [],
+          "charts": 0,
+          "circles": 0,
+          "lines": 24,
+          "nodes": 249,
+          "html": "5150cb3413780caf",
+          "styles": "bcc9a73a44f171a0"
+        },
+        "expanded": {
+          "pressed": [
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true"
+          ],
+          "charts": 1,
+          "circles": 262,
+          "lines": 34,
+          "nodes": 1451,
+          "html": "d10191bd43218879",
+          "styles": "bb39161eb9994675"
+        },
+        "restored": true
+      },
+      "zoom": {
+        "range": [
+          "2026-10-30",
+          "2026-11-07"
+        ],
+        "tiles": [
+          [
+            "Land to published in a Nightly",
+            "p50 13 h 27 min p90 28 h 57 min p99 40 h 37 min"
+          ],
+          [
+            "Revisions landed per day",
+            "236"
+          ],
+          [
+            "Waiting in the Lando queue",
+            "p50 5 min p95 1 h 5 min"
+          ],
+          [
+            "CI on autoland",
+            "p50 2 h 25 min p95 3 h 54 min"
+          ],
+          [
+            "On autoland until merged to main",
+            "p50 2 h 47 min p95 32 h 30 min"
+          ],
+          [
+            "CI on main",
+            "p50 9 h 37 min p95 20 h 23 min"
+          ],
+          [
+            "Merged to main until its Nightly starts",
+            "p50 4 h 21 min p95 11 h 39 min"
+          ],
+          [
+            "Nightly build and publish",
+            "p50 2 h 12 min p95 3 h 6 min"
+          ],
+          [
+            "Merges to main",
+            "34"
+          ],
+          [
+            "Autoland tree closed",
+            "2.5d"
+          ],
+          [
+            "Revisions backed out",
+            "7.3%"
+          ],
+          [
+            "Backed out after a Nightly had published them",
+            "6"
+          ]
+        ],
+        "svgs": 28,
+        "circles": 0,
+        "lines": 22,
+        "paths": 210,
+        "anchors": 0,
+        "nodes": 593,
+        "bodyNodes": 738,
+        "inlineErrors": 0,
+        "html": "337394838e250be0",
+        "styles": "a573323339aab309"
+      },
+      "errors": []
+    },
+    "ship-to-nightly, a revision by its D number": {
+      "load": {
+        "tiles": [
+          [
+            "Land to published in a Nightly",
+            "p50 13 h 42 min p90 30 h 39 min p99 61 h 0 min"
+          ],
+          [
+            "Revisions landed per day",
+            "250"
+          ],
+          [
+            "Waiting in the Lando queue",
+            "p50 5 min p95 1 h 28 min"
+          ],
+          [
+            "CI on autoland",
+            "p50 2 h 24 min p95 3 h 50 min"
+          ],
+          [
+            "On autoland until merged to main",
+            "p50 3 h 2 min p95 19 h 35 min"
+          ],
+          [
+            "CI on main",
+            "p50 8 h 41 min p95 19 h 12 min"
+          ],
+          [
+            "Merged to main until its Nightly starts",
+            "p50 6 h 58 min p95 20 h 36 min"
+          ],
+          [
+            "Nightly build and publish",
+            "p50 2 h 35 min p95 2 h 52 min"
+          ],
+          [
+            "Merges to main",
+            "25"
+          ],
+          [
+            "Autoland tree closed",
+            "2.3d"
+          ],
+          [
+            "Revisions backed out",
+            "5.7%"
+          ],
+          [
+            "Backed out after a Nightly had published them",
+            "1"
+          ]
+        ],
+        "svgs": 28,
+        "circles": 1,
+        "lines": 20,
+        "paths": 156,
+        "anchors": 0,
+        "nodes": 522,
+        "bodyNodes": 694,
+        "inlineErrors": 0,
+        "html": "4eb9b811ed681e81",
+        "styles": "a573323339aab309"
+      },
+      "hover": {
+        "end to end": {
+          "tooltips": 5
+        },
+        "stages": {
+          "tooltips": 5
+        },
+        "candles": {
+          "tooltips": 86
+        }
+      },
+      "pin": {
+        "found": true,
+        "stays": true,
+        "releasedByEscape": true,
+        "releasedByClick": true,
+        "tooltip": {
+          "position": "fixed",
+          "zIndex": "1000",
+          "maxWidth": "520px",
+          "paddingTop": "8px",
+          "paddingLeft": "12px",
+          "borderTopLeftRadius": "4px",
+          "backgroundColor": "rgb(42, 42, 42)",
+          "color": "rgb(255, 255, 255)",
+          "fontFamily": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif",
+          "fontSize": "13px",
+          "lineHeight": "22.1px",
+          "display": "block"
+        },
+        "ring": {
+          "position": "fixed",
+          "zIndex": "999",
+          "width": "12px",
+          "height": "12px",
+          "borderTopWidth": "1px",
+          "borderTopColor": "rgb(27, 30, 35)",
+          "borderTopLeftRadius": "50%",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)",
+          "pointerEvents": "none",
+          "display": "none"
+        },
+        "content": "9c4aaba0aff73bb7"
+      },
+      "legend": {
+        "hidden": {
+          "pressed": [
+            "true",
+            "false",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true"
+          ],
+          "charts": 1,
+          "circles": 1,
+          "lines": 20,
+          "nodes": 521,
+          "html": "40bb04fb0b7233aa",
+          "styles": "95c4e77731132bae"
+        },
+        "shown": {
+          "pressed": [
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true"
+          ],
+          "charts": 1,
+          "circles": 1,
+          "lines": 20,
+          "nodes": 522,
+          "html": "745e1f3b5abe1de4",
+          "styles": "bb39161eb9994675"
+        },
+        "alone": {
+          "pressed": [
+            "true",
+            "false",
+            "true",
+            "false",
+            "false",
+            "false",
+            "false",
+            "false",
+            "false"
+          ],
+          "charts": 1,
+          "circles": 1,
+          "lines": 20,
+          "nodes": 515,
+          "html": "1b1cf0c8c01cadc1",
+          "styles": "4587011607915135"
+        },
+        "all": {
+          "pressed": [
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true"
+          ],
+          "charts": 1,
+          "circles": 1,
+          "lines": 20,
+          "nodes": 522,
+          "html": "745e1f3b5abe1de4",
+          "styles": "bb39161eb9994675"
+        },
+        "collapsed": {
+          "pressed": [],
+          "charts": 0,
+          "circles": 0,
+          "lines": 12,
+          "nodes": 225,
+          "html": "51508485bc3793a4",
+          "styles": "bcc9a73a44f171a0"
+        },
+        "expanded": {
+          "pressed": [
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true"
+          ],
+          "charts": 1,
+          "circles": 1,
+          "lines": 20,
+          "nodes": 522,
+          "html": "745e1f3b5abe1de4",
+          "styles": "bb39161eb9994675"
+        },
+        "restored": true
+      },
+      "zoom": {
+        "range": [
+          "2026-10-05",
+          "2026-10-07"
+        ],
+        "tiles": [
+          [
+            "Land to published in a Nightly",
+            "p50 13 h 46 min p90 27 h 3 min p99 39 h 54 min"
+          ],
+          [
+            "Revisions landed per day",
+            "331"
+          ],
+          [
+            "Waiting in the Lando queue",
+            "p50 5 min p95 1 h 37 min"
+          ],
+          [
+            "CI on autoland",
+            "p50 2 h 23 min p95 3 h 48 min"
+          ],
+          [
+            "On autoland until merged to main",
+            "p50 2 h 58 min p95 9 h 25 min"
+          ],
+          [
+            "CI on main",
+            "p50 8 h 39 min p95 19 h 46 min"
+          ],
+          [
+            "Merged to main until its Nightly starts",
+            "p50 2 h 34 min p95 29 h 43 min"
+          ],
+          [
+            "Nightly build and publish",
+            "p50 2 h 35 min p95 2 h 52 min"
+          ],
+          [
+            "Merges to main",
+            "14"
+          ],
+          [
+            "Autoland tree closed",
+            "1.0d"
+          ],
+          [
+            "Revisions backed out",
+            "5.2%"
+          ],
+          [
+            "Backed out after a Nightly had published them",
+            "1"
+          ]
+        ],
+        "svgs": 28,
+        "circles": 0,
+        "lines": 22,
+        "paths": 106,
+        "anchors": 0,
+        "nodes": 427,
+        "bodyNodes": 611,
+        "inlineErrors": 0,
+        "html": "c1c79d9cd92b8955",
+        "styles": "a573323339aab309"
+      },
+      "errors": []
+    },
+    "ship-to-nightly, a search that matches many revisions": {
+      "load": {
+        "tiles": [
+          [
+            "Land to published in a Nightly",
+            "p50 13 h 43 min p90 25 h 26 min p99 64 h 47 min"
+          ],
+          [
+            "Revisions landed per day",
+            "250"
+          ],
+          [
+            "Waiting in the Lando queue",
+            "p50 5 min p95 1 h 30 min"
+          ],
+          [
+            "CI on autoland",
+            "p50 2 h 25 min p95 3 h 51 min"
+          ],
+          [
+            "On autoland until merged to main",
+            "p50 3 h 8 min p95 21 h 25 min"
+          ],
+          [
+            "CI on main",
+            "p50 10 h 37 min p95 20 h 15 min"
+          ],
+          [
+            "Merged to main until its Nightly starts",
+            "p50 5 h 40 min p95 15 h 31 min"
+          ],
+          [
+            "Nightly build and publish",
+            "p50 2 h 23 min p95 3 h 7 min"
+          ],
+          [
+            "Merges to main",
+            "324"
+          ],
+          [
+            "Autoland tree closed",
+            "29.6d"
+          ],
+          [
+            "Revisions backed out",
+            "6.9%"
+          ],
+          [
+            "Backed out after a Nightly had published them",
+            "11"
+          ]
+        ],
+        "svgs": 28,
+        "circles": 573,
+        "lines": 33,
+        "paths": 1639,
+        "anchors": 0,
+        "nodes": 3412,
+        "bodyNodes": 3545,
+        "inlineErrors": 0,
+        "html": "afcfc3c3d74406a4",
+        "styles": "a573323339aab309"
+      },
+      "hover": {
+        "end to end": {
+          "tooltips": 62
+        },
+        "stages": {
+          "tooltips": 46
+        },
+        "candles": {
+          "tooltips": 192
+        }
+      },
+      "pin": {
+        "found": true,
+        "stays": true,
+        "releasedByEscape": true,
+        "releasedByClick": true,
+        "tooltip": {
+          "position": "fixed",
+          "zIndex": "1000",
+          "maxWidth": "520px",
+          "paddingTop": "8px",
+          "paddingLeft": "12px",
+          "borderTopLeftRadius": "4px",
+          "backgroundColor": "rgb(42, 42, 42)",
+          "color": "rgb(255, 255, 255)",
+          "fontFamily": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif",
+          "fontSize": "13px",
+          "lineHeight": "22.1px",
+          "display": "block"
+        },
+        "ring": {
+          "position": "fixed",
+          "zIndex": "999",
+          "width": "12px",
+          "height": "12px",
+          "borderTopWidth": "1px",
+          "borderTopColor": "rgb(27, 30, 35)",
+          "borderTopLeftRadius": "50%",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)",
+          "pointerEvents": "none",
+          "display": "none"
+        },
+        "content": "c77b35bec69c5e9a"
+      },
+      "legend": {
+        "hidden": {
+          "pressed": [
+            "true",
+            "false",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true"
+          ],
+          "charts": 1,
+          "circles": 573,
+          "lines": 33,
+          "nodes": 3410,
+          "html": "8a6b26d0ab946aec",
+          "styles": "95c4e77731132bae"
+        },
+        "shown": {
+          "pressed": [
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true"
+          ],
+          "charts": 1,
+          "circles": 573,
+          "lines": 33,
+          "nodes": 3412,
+          "html": "001d893528afd4e6",
+          "styles": "bb39161eb9994675"
+        },
+        "alone": {
+          "pressed": [
+            "true",
+            "false",
+            "true",
+            "false",
+            "false",
+            "false",
+            "false",
+            "false",
+            "false"
+          ],
+          "charts": 1,
+          "circles": 573,
+          "lines": 33,
+          "nodes": 3398,
+          "html": "fa00ac0ae50ffc47",
+          "styles": "4587011607915135"
+        },
+        "all": {
+          "pressed": [
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true"
+          ],
+          "charts": 1,
+          "circles": 573,
+          "lines": 33,
+          "nodes": 3412,
+          "html": "001d893528afd4e6",
+          "styles": "bb39161eb9994675"
+        },
+        "collapsed": {
+          "pressed": [],
+          "charts": 0,
+          "circles": 0,
+          "lines": 24,
+          "nodes": 249,
+          "html": "45f3c23e1984d10d",
+          "styles": "bcc9a73a44f171a0"
+        },
+        "expanded": {
+          "pressed": [
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true",
+            "true"
+          ],
+          "charts": 1,
+          "circles": 573,
+          "lines": 33,
+          "nodes": 3412,
+          "html": "001d893528afd4e6",
+          "styles": "bb39161eb9994675"
+        },
+        "restored": true
+      },
+      "zoom": {
+        "range": [
+          "2026-09-06",
+          "2026-09-29"
+        ],
+        "tiles": [
+          [
+            "Land to published in a Nightly",
+            "p50 13 h 19 min p90 27 h 31 min p99 74 h 55 min"
+          ],
+          [
+            "Revisions landed per day",
+            "250"
+          ],
+          [
+            "Waiting in the Lando queue",
+            "p50 5 min p95 1 h 23 min"
+          ],
+          [
+            "CI on autoland",
+            "p50 2 h 28 min p95 3 h 50 min"
+          ],
+          [
+            "On autoland until merged to main",
+            "p50 3 h 0 min p95 18 h 14 min"
+          ],
+          [
+            "CI on main",
+            "p50 10 h 31 min p95 20 h 3 min"
+          ],
+          [
+            "Merged to main until its Nightly starts",
+            "p50 5 h 14 min p95 21 h 57 min"
+          ],
+          [
+            "Nightly build and publish",
+            "p50 2 h 18 min p95 3 h 9 min"
+          ],
+          [
+            "Merges to main",
+            "86"
+          ],
+          [
+            "Autoland tree closed",
+            "7.9d"
+          ],
+          [
+            "Revisions backed out",
+            "7%"
+          ],
+          [
+            "Backed out after a Nightly had published them",
+            "2"
+          ]
+        ],
+        "svgs": 28,
+        "circles": 278,
+        "lines": 21,
+        "paths": 516,
+        "anchors": 0,
+        "nodes": 1318,
+        "bodyNodes": 1463,
+        "inlineErrors": 0,
+        "html": "354e7a7a2cebe50a",
+        "styles": "a573323339aab309"
       },
       "errors": []
     }

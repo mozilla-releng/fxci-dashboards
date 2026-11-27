@@ -21,3 +21,5 @@ repo](https://github.com/mozilla-releng/fxci-dashboards) for more details.
   estimated utilization for the Intel and Apple Silicon MacOS test pools.
 - [Pending Times](./pending-times) — how long task runs wait for a machine
   across all worker pools, broken down by pool, project and priority.
+- [Ship to Nightly faster](./ship-to-nightly) — how long a patch takes from
+  Land in Phabricator to a Nightly that people run, stage by stage.
