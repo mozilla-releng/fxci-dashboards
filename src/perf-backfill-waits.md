@@ -38,7 +38,9 @@ import {openDependencyTimeline, openDownstreamTimeline, poolActivityDays} from "
 import {openQueueGantt} from "./_queue-profile.js";
 import {indexQueueSeries, KINDS as QUEUE_KINDS, queuedPerBucket} from "./_queue-position.js";
 import {FIRST_DAY, LAST_DAY} from "./_task-queues.js";
-import {attachPlotHover, createTooltip, nearestBar, nearestDot, timelineLink} from "./_tooltip.js";
+import {attachPlotHover, createTooltip, nearestDot, timelineLink} from "./_tooltip.js";
+import {chartBox, dateAxis, DAY_MS, eventRule, formatTime, MARGINS, syncCharts} from "./_time-charts.js";
+import {collapsibleBlock, hiddenKeysState, LEGEND_MARKERS} from "./_legend.js";
 ```
 
 ```js
@@ -115,39 +117,19 @@ const EXCEPTION_COLOR = "#d99a00";
 const BUG_KEY = "bug";
 // When the patch of bug 1677741 landed on autoland: the time of its comment #15.
 const BUG_DATE = new Date("2026-09-04T10:33:58Z");
-const MARGIN_TOP = 18;
-const MARGIN_BOTTOM = 22;
-const MARGIN_LEFT = 44;
-const MARGIN_RIGHT = 40;
+const {top: MARGIN_TOP, bottom: MARGIN_BOTTOM, left: MARGIN_LEFT, right: MARGIN_RIGHT} = MARGINS;
 const HIT_RADIUS = 8;
 const TC_URL = "https://firefox-ci-tc.services.mozilla.com";
 const TREEHERDER_URL = "https://treeherder.mozilla.org";
 const WORKERS_URL = "https://tests.firefox.dev/workers.html";
-const DAY_MS = 86400000;
-const formatDay = d3.utcFormat("%-d %b");
-const formatTime = d3.utcFormat("%-d %b %H:%M UTC");
 
 // The days the data covers, and the range the charts show, as [first moment, end
 // of the last day].
 const DATA_FIRST_DAY = new Date(`${FIRST_DAY}T00:00:00Z`);
 const DATA_LAST_DAY = new Date(`${LAST_DAY}T00:00:00Z`);
 const dayAfter = (day) => new Date(+day + DAY_MS);
-const TICK_DAYS = [1, 2, 7, 14, 28, 56];
-const TICK_SPACING = 90;
 
-// A tick every day, two days, week and so on, as often as they stay apart.
-function dateTicks(domain, width) {
-  const days = (domain[1] - domain[0]) / DAY_MS;
-  const room = Math.max(2, (width - MARGIN_LEFT - MARGIN_RIGHT) / TICK_SPACING);
-  return d3.utcDay.range(domain[0], domain[1], TICK_DAYS.find((step) => days / step <= room) ?? TICK_DAYS[TICK_DAYS.length - 1]);
-}
-
-const dateAxis = (domain, width) => ({type: "utc", domain, ticks: dateTicks(domain, width), tickFormat: formatDay, label: null});
-
-const bugRule = (domain, hidden) =>
-  hidden.has(BUG_KEY) || BUG_DATE < domain[0] || BUG_DATE > domain[1]
-    ? null
-    : Plot.ruleX([BUG_DATE], {stroke: "currentColor", strokeOpacity: 0.5, strokeDasharray: "2 3"});
+const bugRule = (domain, hidden) => eventRule(domain, hidden, {key: BUG_KEY, date: BUG_DATE});
 
 const inDomain = (domain, ms) => ms >= domain[0] && ms < domain[1];
 const requestsByPool = d3.group(requestRows, (r) => r.pool);
@@ -597,15 +579,6 @@ function requestsKey(requests, shown, selectedRequester) {
   return htl.html`<div class="bw-requests-key">${sizes}${filter}</div>`;
 }
 
-const LEGEND_MARKERS = {
-  dot: (color) => htl.svg`<svg width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="4" fill="${color}"></circle></svg>`,
-  cross: (color) => htl.svg`<svg width="10" height="10" aria-hidden="true"><path d="M1 1L9 9M1 9L9 1" stroke="${color}" stroke-width="1.6"></path></svg>`,
-  diamond: (color) => htl.svg`<svg width="10" height="10" aria-hidden="true"><path d="M5 0.8L9.2 5L5 9.2L0.8 5Z" fill="none" stroke="${color}" stroke-width="1.6"></path></svg>`,
-  triangle: (color) => htl.svg`<svg width="10" height="10" aria-hidden="true"><path d="M5 0.9L9.3 9H0.7Z" fill="none" stroke="${color}" stroke-width="1.6" stroke-linejoin="round"></path></svg>`,
-  square: (color) => htl.svg`<svg width="10" height="10" aria-hidden="true"><rect x="1" y="1" width="8" height="8" fill="none" stroke="${color}" stroke-width="1.6"></rect></svg>`,
-  swatch: (color, alpha) => htl.svg`<svg width="10" height="10" aria-hidden="true"><rect width="10" height="10" rx="2" fill="${color}" fill-opacity="${Math.min(1, alpha + 0.2)}"></rect></svg>`,
-  event: () => htl.svg`<svg width="18" height="10" aria-hidden="true"><path d="M0 5H18" stroke="currentColor" stroke-opacity="0.6" stroke-width="1.4" stroke-dasharray="2 3"></path></svg>`
-};
 const EVENT_LEGEND = {title: "Event", entries: [{key: BUG_KEY, title: "Backfill priority set to very-low (bug 1677741)", marker: () => LEGEND_MARKERS.event()}]};
 // One row per task of the chain, with what it waited for and ran.
 const E2E_LEGEND = [
@@ -635,143 +608,6 @@ const requestsLegend = (requests) => {
   });
   return [{title: "Profile generations", entries}, EVENT_LEGEND];
 };
-
-// A row of buttons, each hiding or showing its entry, and a title that hides or
-// shows them all. Double-clicking an entry shows only that one of the row, or all
-// of them again if it already was the only one. The keys of a chart's legend are
-// its own, so that hiding a series in one chart leaves the same series of another
-// in place.
-function legendRow({title, entries}, hidden, scope, otherGroups = []) {
-  const keyOf = (key) => `${scope}:${key}`;
-  const keys = entries.map((entry) => keyOf(entry.key));
-  const anyVisible = keys.some((key) => !hidden.has(key));
-  const titleButton = htl.html`<button type="button" class="bw-legend-title" aria-pressed="${String(anyVisible)}">${title}</button>`;
-  // Double-clicking the title shows only this group of the legend, or all of them
-  // again if it already was the only one.
-  const otherKeys = otherGroups.flatMap((group) => group.entries.map((entry) => keyOf(entry.key)));
-  const showOnlyGroup = () => {
-    const alone = otherKeys.every((other) => hidden.has(other));
-    setHiddenKeys(alone ? [] : otherKeys, [...keys, ...(alone ? otherKeys : [])]);
-  };
-  titleButton.onclick = (event) => (event.detail === 2 ? showOnlyGroup() : setHidden(keys, anyVisible));
-  const showOnly = (key) => {
-    const others = keys.filter((other) => other !== key);
-    const alone = others.every((other) => hidden.has(other));
-    setHiddenKeys(alone ? [] : others, [key, ...(alone ? others : [])]);
-  };
-  return htl.html`<div class="bw-legend">${titleButton}${entries.map(({key, title, marker}) => {
-    const button = htl.html`<button type="button" aria-pressed="${String(!hidden.has(keyOf(key)))}">${marker()}${title}</button>`;
-    // The first click of a double click toggles the entry, and the second shows it alone.
-    button.onclick = (event) => (event.detail === 2 ? showOnly(keyOf(key)) : setHidden([keyOf(key)], !hidden.has(keyOf(key))));
-    return button;
-  })}</div>`;
-}
-
-const legendRows = (groups, hidden, scope) =>
-  htl.html`<div class="bw-legends bw-chart-legends">${groups.map((group) => legendRow(group, hidden, scope, groups.filter((other) => other !== group)))}</div>`;
-
-// A chart in a box that tells where its plot area is: `left` and `right` pixels
-// from the edges. Charts of different sizes share the time axis through it, in the
-// line at the pointer and in the selection. A box that is `daily` has a bar a day.
-function chartBox(content, height, {left = MARGIN_LEFT, right = MARGIN_RIGHT, top = MARGIN_TOP, bottom = MARGIN_BOTTOM, daily = false} = {}) {
-  return htl.html`<div class="bw-chart" data-left="${left}" data-right="${right}" data-daily="${daily}" style="--plot-top:${top}px;--plot-height:${height - top - bottom}px">${content}<div class="bw-selection"></div><div class="bw-crosshair"><span></span></div></div>`;
-}
-
-const DRAG_PIXELS = 4;
-
-// Links the charts of a section by time: a line down every chart at the pointer,
-// with its time, so that what happened in one chart can be read in the others, and
-// a selection by dragging across any of them, shown in all, which `select` gets
-// as two moments when it ends.
-function syncCharts(section, domain, select) {
-  const boxes = [...section.querySelectorAll(".bw-chart")];
-  const span = domain[1] - domain[0];
-  const edges = (box) => {
-    const rect = box.getBoundingClientRect();
-    return {rect, left: Number(box.dataset.left), right: rect.width - Number(box.dataset.right)};
-  };
-  const fractionAt = (box, clientX) => {
-    const {rect, left, right} = edges(box);
-    return (clientX - rect.left - left) / (right - left);
-  };
-  const place = (box, element, fraction) => {
-    const {left, right} = edges(box);
-    element.style.left = `${left + fraction * (right - left)}px`;
-  };
-
-  const lines = boxes.map((box) => ({box, line: box.querySelector(".bw-crosshair")}));
-  const hideLines = () => {
-    if (!tooltip.state.pinned) for (const {line} of lines) line.style.display = "none";
-  };
-  section.addEventListener("pointermove", (event) => {
-    const box = event.target.closest?.(".bw-chart");
-    if (!box || drag) return hideLines();
-    const fraction = fractionAt(box, event.clientX);
-    if (fraction < 0 || fraction > 1) return hideLines();
-    const time = new Date(+domain[0] + fraction * span);
-    for (const {box: other, line} of lines) {
-      line.style.display = "block";
-      place(other, line, fraction);
-      line.firstElementChild.textContent = other.dataset.daily === "true" ? formatDay(time) : formatTime(time);
-    }
-  });
-  section.addEventListener("pointerleave", hideLines);
-
-  let drag = null;
-  const showSelection = (from, to) => {
-    for (const box of boxes) {
-      const selection = box.querySelector(".bw-selection");
-      selection.style.display = from === null ? "none" : "block";
-      if (from === null) continue;
-      const {left, right} = edges(box);
-      selection.style.left = `${left + from * (right - left)}px`;
-      selection.style.width = `${(to - from) * (right - left)}px`;
-    }
-  };
-  const clamp = (fraction) => Math.min(1, Math.max(0, fraction));
-  const move = (event) => {
-    if (!drag.active && Math.abs(event.clientX - drag.startX) < DRAG_PIXELS) return;
-    if (!drag.active) {
-      drag.active = true;
-      tooltip.state.dragging = true;
-      tooltip.hide();
-      for (const {line} of lines) line.style.display = "none";
-    }
-    const fractions = [drag.fraction, clamp(fractionAt(drag.box, event.clientX))].sort((a, b) => a - b);
-    drag.range = fractions;
-    showSelection(...fractions);
-  };
-  const end = () => {
-    window.removeEventListener("pointermove", move);
-    window.removeEventListener("pointerup", end);
-    window.removeEventListener("pointercancel", cancel);
-    const {active, range} = drag;
-    drag = null;
-    tooltip.state.dragging = false;
-    if (active) tooltip.hide();
-    showSelection(null);
-    if (!active || !range || range[1] - range[0] <= 0) return;
-    // The click that follows a drag is not one.
-    const swallow = (event) => event.stopPropagation();
-    window.addEventListener("click", swallow, {capture: true, once: true});
-    setTimeout(() => window.removeEventListener("click", swallow, true), 0);
-    select(new Date(+domain[0] + range[0] * span), new Date(+domain[0] + range[1] * span));
-  };
-  const cancel = () => {
-    drag.active = false;
-    end();
-  };
-  section.addEventListener("pointerdown", (event) => {
-    const box = event.target.closest?.(".bw-chart");
-    if (event.button !== 0 || !box) return;
-    const fraction = fractionAt(box, event.clientX);
-    if (fraction < 0 || fraction > 1) return;
-    drag = {box, fraction, startX: event.clientX, active: false, range: null};
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", end);
-    window.addEventListener("pointercancel", cancel);
-  });
-}
 
 const CHARTS = [METRICS_TITLE, REQUESTS_TITLE, E2E_TITLE, QUEUES_TITLE];
 
@@ -912,109 +748,26 @@ function platformSection(pool, width, hidden, selectedRequester, domain) {
     "chart-queues": {legend: () => requests?.length && QUEUE_LEGEND, draw: (hidden) => noRequests() ?? queuesBlock({requests, pool, width, hidden, domain})}
   };
   // A chart is drawn again only when something it shows changed: its own hidden keys,
-  // whether it is collapsed, the platform, requester, days or width. Hiding a series
-  // in one chart leaves the others as they were, so they do not flash or cost time.
-  const block = (item) => {
-    const collapsed = hidden.has(item.chartKey);
-    const prefix = `${item.chartKey}:`;
-    const ownKeys = [...hidden].filter((key) => key.startsWith(prefix)).sort();
-    const signature = JSON.stringify([pool, width, +domain[0], +domain[1], selectedRequester, collapsed, ownKeys]);
-    const cached = blockCache.get(item.chartKey);
-    if (cached?.signature === signature) return cached.node;
-    const title = columnTitles(width, item, collapsed);
-    let node;
-    if (collapsed) {
-      node = htl.html`<div>${title}</div>`;
-    } else {
-      const {legend, draw} = bodies[item.chartKey];
-      const groups = legend();
-      const ownHidden = {has: (key) => hidden.has(`${item.chartKey}:${key}`)};
-      node = htl.html`<div>${title}${groups ? legendRows(groups, hidden, item.chartKey) : ""}${draw(ownHidden)}</div>`;
-    }
-    blockCache.set(item.chartKey, {signature, node});
-    return node;
-  };
+  // whether it is collapsed, the platform, requester, days or width.
+  const block = (item) =>
+    collapsibleBlock(item, {
+      hidden,
+      state: {setHidden, setHiddenKeys},
+      width,
+      context: [pool, width, +domain[0], +domain[1], selectedRequester],
+      cache: blockCache,
+      body: ({chartKey}, ownHidden) => {
+        const {legend, draw} = bodies[chartKey];
+        return {groups: legend(), content: draw(ownHidden)};
+      }
+    });
   const section = htl.html`<section class="bw-pool">${CHARTS.map(block)}</section>`;
-  syncCharts(section, domain, (from, to) => setRange(d3.utcDay.floor(from), d3.utcDay.floor(new Date(Math.max(+from, +to - 1)))));
+  syncCharts(section, domain, (from, to) => setRange(d3.utcDay.floor(from), d3.utcDay.floor(new Date(Math.max(+from, +to - 1)))), tooltip);
   return section;
-}
-
-// Aligned with the left edge of the chart, where its axis labels start. The title
-// collapses and expands its chart.
-function columnTitles(width, {chartKey, title}, collapsed) {
-  const button = htl.html`<button type="button" class="bw-collapse" aria-expanded="${String(!collapsed)}"><span aria-hidden="true">${collapsed ? "▸" : "▾"}</span> ${title}</button>`;
-  button.onclick = () => setHidden([chartKey], !collapsed);
-  return htl.html`<div class="bw-title" style="width:${width}px"><h2>${button}</h2></div>`;
 }
 ```
 
 <style>
-.bw-legends {
-  margin: 0.75rem 0 1.25rem;
-  font-family: var(--sans-serif);
-}
-.bw-legend {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.35rem 1.25rem;
-  margin: 0.35rem 0;
-  font-size: 0.85rem;
-  color: var(--theme-foreground-muted, #888);
-}
-.bw-legend button {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0;
-  border: 0;
-  background: none;
-  font: inherit;
-  color: inherit;
-  cursor: pointer;
-}
-.bw-legend button.bw-legend-title {
-  min-width: 9rem;
-  justify-content: flex-start;
-  font-weight: 600;
-}
-.bw-legend button:hover {
-  color: var(--theme-foreground, #000);
-}
-.bw-legend button[aria-pressed="false"] {
-  opacity: 0.4;
-  text-decoration: line-through;
-}
-.bw-title {
-  box-sizing: border-box;
-  margin: 0;
-  text-align: left;
-}
-.bw-title h2 {
-  margin: 1.5rem 0 0;
-  max-width: none;
-  font-size: 1.6rem;
-  line-height: 1.2;
-}
-.bw-collapse {
-  padding: 0;
-  text-align: left;
-  border: 0;
-  background: none;
-  font: inherit;
-  color: inherit;
-  cursor: pointer;
-}
-.bw-collapse span {
-  text-align: left;
-  display: inline-block;
-  width: 1em;
-  color: var(--theme-foreground-muted, #888);
-}
-.bw-chart-legends {
-  margin: 0.25rem 0 0.5rem;
-  padding: 0 40px 0 44px;
-}
 .bw-requests-key {
   display: flex;
   flex-wrap: wrap;
@@ -1084,45 +837,6 @@ function columnTitles(width, {chartKey, title}, collapsed) {
 .bw-metric-multi small {
   font-size: 0.7rem;
   font-weight: 400;
-}
-.bw-chart {
-  position: relative;
-  -webkit-user-select: none;
-  user-select: none;
-  cursor: crosshair;
-}
-.bw-selection {
-  position: absolute;
-  top: var(--plot-top);
-  z-index: 2;
-  display: none;
-  height: var(--plot-height);
-  background: rgba(47, 116, 208, 0.18);
-  border-left: 1px solid rgba(47, 116, 208, 0.7);
-  border-right: 1px solid rgba(47, 116, 208, 0.7);
-  pointer-events: none;
-}
-.bw-crosshair {
-  position: absolute;
-  top: var(--plot-top);
-  z-index: 2;
-  display: none;
-  width: 0;
-  height: var(--plot-height);
-  border-left: 1px solid rgba(128, 128, 128, 0.8);
-  pointer-events: none;
-}
-.bw-crosshair span {
-  position: absolute;
-  top: -15px;
-  left: 0;
-  transform: translateX(-50%);
-  padding: 0 4px;
-  border-radius: 3px;
-  background: var(--theme-background, #fff);
-  color: var(--theme-foreground-muted, #888);
-  font-size: 10px;
-  white-space: nowrap;
 }
 </style>
 
@@ -1222,38 +936,9 @@ resetButton.disabled = +domain[0] === +DATA_FIRST_DAY && +domain[1] === +dayAfte
 ```js
 // The keys of the hidden series and charts. Every legend button writes them to
 // this element, and the charts redraw when it changes.
-const hiddenInput = Object.assign(document.createElement("div"), {value: new Set()});
-const hidden = Generators.input(hiddenInput);
-// Redrawing replaces the charts, which for a moment leaves the page shorter and
-// would scroll it back up. The charts' box keeps its height until they are drawn,
-// and the page then goes back to where it was.
-const keepingScroll = (change) => {
-  const box = document.getElementById("bw-charts");
-  const top = window.scrollY;
-  box.style.minHeight = `${box.offsetHeight}px`;
-  const release = () => {
-    observer.disconnect();
-    clearTimeout(timer);
-    requestAnimationFrame(() => {
-      box.style.minHeight = "";
-      window.scrollTo({top});
-    });
-  };
-  const observer = new MutationObserver(release);
-  const timer = setTimeout(release, 10000);
-  observer.observe(box, {childList: true, subtree: true});
-  change();
-};
-const setHiddenKeys = (toHide, toShow) => {
-  const next = new Set(hiddenInput.value);
-  for (const key of toHide) next.add(key);
-  for (const key of toShow) next.delete(key);
-  keepingScroll(() => {
-    hiddenInput.value = next;
-    hiddenInput.dispatchEvent(new Event("input"));
-  });
-};
-const setHidden = (keys, hide) => (hide ? setHiddenKeys(keys, []) : setHiddenKeys([], keys));
+const hiddenKeys = hiddenKeysState("bw-charts");
+const hidden = Generators.input(hiddenKeys.input);
+const {setHiddenKeys, setHidden} = hiddenKeys;
 ```
 
 <div class="card" id="bw-charts">
