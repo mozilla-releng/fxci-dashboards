@@ -1,0 +1,33 @@
+# Runs the tests, and builds the site from fixtures to check its pages in a
+# browser (see "Tests" in the README), on every pull request and every push to
+# main. It needs no secrets, so it also runs for pull requests from forks.
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npx playwright install --with-deps firefox
+      - run: npm run test:perf
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-results
+          path: perf-results/
+          if-no-files-found: ignore
