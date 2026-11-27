@@ -41,6 +41,8 @@ import {FIRST_DAY, LAST_DAY} from "./_task-queues.js";
 import {attachPlotHover, createTooltip, nearestDot, timelineLink} from "./_tooltip.js";
 import {chartBox, dateAxis, DAY_MS, eventRule, formatTime, MARGINS, syncCharts} from "./_time-charts.js";
 import {collapsibleBlock, hiddenKeysState, LEGEND_MARKERS} from "./_legend.js";
+import {candleChart, segmentLines} from "./_candles.js";
+import {countOf, metricsRow} from "./_metrics.js";
 ```
 
 ```js
@@ -294,7 +296,6 @@ const tooltip = createTooltip({invalidation});
 
 const REQUEST_RADII = [2, 14];
 const requestRadius = (tests, maxTests) => REQUEST_RADII[0] + (REQUEST_RADII[1] - REQUEST_RADII[0]) * Math.sqrt(tests / maxTests);
-const countOf = (n, noun, plural = `${noun}s`) => `${n} ${n === 1 ? noun : plural}`;
 const purples = (t) => d3.interpolatePurples(0.25 + 0.75 * t);
 const profileColor = (profiles, maxProfiles) => purples(Math.sqrt(profiles / maxProfiles));
 const requestColor = (maxProfiles) => ({type: "sqrt", domain: [0, maxProfiles], interpolate: purples});
@@ -356,13 +357,11 @@ function blockedLines({count, deadline, parent, root}) {
 
 function endToEndTooltipContent(request) {
   const {chain} = request;
-  const line = ({key, title, color}) =>
-    htl.html`<span><i class="bw-swatch" style="background:${color}"></i>${title}: <b>${formatWait(chain.durations[key] / 3600)}</b></span>`;
   const ended = chain.blocked ? "never ran" : chain.expired ? "expired" : "finished";
   return htl.html`${requestHeading(request)}
     <span class="${chain.blocked ? "bw-tt-blocked" : chain.expired ? "bw-tt-expired" : ""}"><b>${formatWait(chain.total / 3600)}</b> until the last perf task ${ended}, ${formatTime(chain.finished)}</span>
     <div class="bw-tt-sep"></div>
-    ${[...E2E_SEGMENTS].reverse().filter(({applies}) => !applies || applies(chain)).map(line)}
+    ${segmentLines(E2E_SEGMENTS, {durations: chain.durations, subject: chain, format: (hours) => formatWait(hours)})}
     ${request.blocked ? blockedLines(request.blocked) : ""}
     <div class="bw-tt-sep"></div>
     ${requestLinks(request)}
@@ -379,7 +378,7 @@ function showRequest(event, point, chartRect) {
 }
 
 function showEndToEnd(event, point, chartRect) {
-  if (!tooltip.open(event, point.request.chain, endToEndTooltipContent(point.request))) return;
+  if (!tooltip.open(event, point.item.chain, endToEndTooltipContent(point.item))) return;
   tooltip.showRing(chartRect, point, 12);
 }
 
@@ -436,10 +435,6 @@ function requestsChart({requests, shown, width, hidden, domain}) {
 // legend has hidden are left out and the others close ranks, so the dot is at
 // the top of what is left.
 function endToEndChart({requests, shown, width, hidden, domain}) {
-  const chained = shown.filter((request) => request.chain);
-  const segments = E2E_SEGMENTS.filter(({key}) => !hidden.has(key));
-  const topHours = (request) => d3.sum(segments, ({key}) => request.chain.durations[key]) / 3600;
-  const ends = segments.length ? chained : [];
   const blockedHours = (request) => (request.blocked.deadline - request.time) / 3600000;
   const maxHours = Math.max(d3.max(requests, (request) => request.chain?.total ?? 0) / 3600, d3.max(requests, (request) => (request.blocked ? blockedHours(request) : 0)) ?? 0);
   // A perf task that never ran is marked where it gave up, at its deadline. When
@@ -447,42 +442,30 @@ function endToEndChart({requests, shown, width, hidden, domain}) {
   const marked = (kind) => shown.filter((request) => request.blocked && blockedKind(request.blocked) === kind && !hidden.has(kind.key));
   const markedRequests = new Set(BLOCKED_KINDS.flatMap(marked));
   const joined = [...markedRequests].filter((request) => request.chain && !request.chain.blocked);
-  const runEnds = ends.filter((request) => !request.chain.blocked);
-  const bars = chained.flatMap((request) => {
-    let from = 0;
-    return segments.map(({key}) => {
-      const to = from + request.chain.durations[key] / 3600;
-      const bar = {time: request.time, key, from, to};
-      from = to;
-      return bar;
-    });
-  });
-  const plot = Plot.plot({
+  return candleChart({
+    items: shown.filter((request) => request.chain),
+    segments: E2E_SEGMENTS,
+    hidden,
+    domain,
     width,
     height: E2E_HEIGHT,
-    marginTop: MARGIN_TOP,
-    marginBottom: MARGIN_BOTTOM,
-    marginLeft: MARGIN_LEFT,
-    marginRight: MARGIN_RIGHT,
-    x: dateAxis(domain, width),
-    y: {domain: [0, maxHours * 1.05], grid: true, label: "hours"},
-    color: {domain: E2E_SEGMENTS.map(({key}) => key), range: E2E_SEGMENTS.map(({color}) => color)},
-    marks: [
-      Plot.ruleY([0], {strokeOpacity: 0.3}),
-      bugRule(domain, hidden),
-      Plot.ruleX(bars, {x: "time", y1: "from", y2: "to", stroke: "key", strokeWidth: E2E_BAR_WIDTH}),
-      Plot.ruleX(joined, {x: "time", y1: topHours, y2: blockedHours, stroke: BLOCKED_COLOR, strokeOpacity: 0.7, strokeDasharray: "2 2"}),
-      Plot.dot(runEnds.filter((request) => !request.chain.expired), {x: "time", y: topHours, r: 3, fill: "currentColor"}),
-      Plot.dot(runEnds.filter((request) => request.chain.expired), {x: "time", y: topHours, symbol: "times", r: 5, stroke: EXCEPTION_COLOR, strokeWidth: 2}),
-      ...BLOCKED_KINDS.map((kind) => Plot.dot(marked(kind), {x: "time", y: blockedHours, symbol: kind.symbol, r: 5, stroke: BLOCKED_COLOR, strokeWidth: 2, fill: "none"}))
-    ]
+    maxHours,
+    barWidth: E2E_BAR_WIDTH,
+    hitRadius: HIT_RADIUS,
+    tooltip,
+    show: showEndToEnd,
+    before: [bugRule(domain, hidden)],
+    after: ({topHours, ends}) => {
+      const runEnds = ends.filter((request) => !request.chain.blocked);
+      return [
+        Plot.ruleX(joined, {x: "time", y1: topHours, y2: blockedHours, stroke: BLOCKED_COLOR, strokeOpacity: 0.7, strokeDasharray: "2 2"}),
+        Plot.dot(runEnds.filter((request) => !request.chain.expired), {x: "time", y: topHours, r: 3, fill: "currentColor"}),
+        Plot.dot(runEnds.filter((request) => request.chain.expired), {x: "time", y: topHours, symbol: "times", r: 5, stroke: EXCEPTION_COLOR, strokeWidth: 2}),
+        ...BLOCKED_KINDS.map((kind) => Plot.dot(marked(kind), {x: "time", y: blockedHours, symbol: kind.symbol, r: 5, stroke: BLOCKED_COLOR, strokeWidth: 2, fill: "none"}))
+      ];
+    },
+    drawnHours: (request, topHours) => Math.max(topHours(request), markedRequests.has(request) ? blockedHours(request) : 0)
   });
-  const x = plot.scale("x");
-  const y = plot.scale("y");
-  const drawnHours = (request) => Math.max(topHours(request), markedRequests.has(request) ? blockedHours(request) : 0);
-  const points = ends.map((request) => ({request, x: x.apply(request.time), y: y.apply(drawnHours(request)), baseline: y.apply(0)}));
-  attachPlotHover(tooltip, plot, (px, py) => nearestBar(points, px, py, {barWidth: E2E_BAR_WIDTH, hitRadius: HIT_RADIUS}), showEndToEnd);
-  return plot;
 }
 
 // The worker pools the chain tasks of these requests ran in: for each kind of
@@ -611,11 +594,6 @@ const requestsLegend = (requests) => {
 
 const CHARTS = [METRICS_TITLE, REQUESTS_TITLE, E2E_TITLE, QUEUES_TITLE];
 
-const METRIC_HEIGHT = 84;
-const METRIC_TOP = 18;
-const METRIC_BOTTOM = 4;
-const METRIC_GAP = 12;
-const METRIC_MIN_WIDTH = 110;
 const endToEndHours = (requests, share) => d3.quantile(requests.filter((request) => request.chain).map((request) => request.chain.total / 3600), share);
 const sumOf = (key) => (requests) => (requests.length ? d3.sum(requests, (request) => request[key]) : undefined);
 const formatCount = (n) => Math.round(n).toLocaleString("en-US");
@@ -635,93 +613,13 @@ const METRICS = [
       {key: "p99", title: "p99", value: (requests) => endToEndHours(requests, 0.99), color: "#163f7a"}
     ]
   },
-  {key: "requests", title: "Backfill requests", format: formatCount, series: [{value: (requests) => requests.length, color: "#8a4fb5"}]},
+  {key: "requests", title: "Backfill requests", format: formatCount, countless: true, series: [{value: (requests) => requests.length, color: "#8a4fb5"}]},
   {key: "requesters", title: "People requesting backfills", format: formatCount, series: [{value: distinctRequesters, color: "#5b6abf"}]},
   {key: "builds", title: "Builds scheduled", format: formatCount, series: [{value: sumOf("builds"), color: "#c2476f"}]},
   {key: "profiles", title: "Profile generations scheduled", format: formatCount, series: [{value: sumOf("profiles"), color: "#237a4b"}]},
   {key: "tests", title: "Perf tests scheduled", format: formatCount, series: [{value: sumOf("tests"), color: "#d98324"}]},
   {key: "blocked", title: "Perf tests that never ran, upstream broke", format: formatCount, series: [{value: (requests) => (requests.length ? d3.sum(requests, (request) => request.blocked?.count ?? 0) : undefined), color: BLOCKED_COLOR}]}
 ];
-
-// One tile: the numbers, and below them a chart of each for every day, which
-// shares the time axis of the charts below, with the same pointer line, tooltip and
-// selection.
-function metricTile(metric, {requests, domain, tileWidth}) {
-  const days = d3.utcDay.range(domain[0], domain[1]);
-  const byDay = d3.group(requests, (request) => +d3.utcDay.floor(request.time));
-  const perDay = days.map((day) => {
-    const ofDay = byDay.get(+day) ?? [];
-    return {day, requests: ofDay, values: metric.series.map((series) => series.value(ofDay))};
-  });
-  const steps = [...perDay, {day: domain[1], requests: [], values: perDay[perDay.length - 1]?.values ?? []}];
-  const top = Math.max(d3.max(perDay, (entry) => d3.max(entry.values)) ?? 0, 1e-9) * 1.1;
-  const single = metric.series.length === 1;
-  const plot = Plot.plot({
-    width: tileWidth,
-    height: METRIC_HEIGHT,
-    marginTop: METRIC_TOP,
-    marginBottom: METRIC_BOTTOM,
-    marginLeft: 0,
-    marginRight: 0,
-    x: {type: "utc", domain, axis: null},
-    y: {domain: [0, top], axis: null},
-    marks: [
-      Plot.ruleY([0], {strokeOpacity: 0.3}),
-      bugRule(domain, new Set()),
-      ...metric.series.flatMap(({color}, index) => {
-        const options = {x: "day", y: (entry) => entry.values[index], curve: "step-after", defined: (entry) => entry.values[index] != null};
-        return [
-          ...(single ? [Plot.areaY(steps, {...options, fill: color, fillOpacity: 0.25})] : []),
-          Plot.lineY(steps, {...options, stroke: color, strokeWidth: 1.2})
-        ];
-      })
-    ]
-  });
-  const xScale = plot.scale("x");
-  const find = (px, py) => {
-    const index = Math.floor((+xScale.invert(px) - +domain[0]) / DAY_MS);
-    return px >= 0 && px <= tileWidth && py >= METRIC_TOP && py <= METRIC_HEIGHT - METRIC_BOTTOM && index >= 0 && index < days.length ? {entry: perDay[index], x: px} : null;
-  };
-  const show = (event, {entry}) => {
-    const line = (series, index) => {
-      const value = entry.values[index];
-      const text = value == null ? "–" : metric.format(value);
-      return single
-        ? htl.html`<span>${metric.title}: <b>${text}</b></span>`
-        : htl.html`<span><i class="bw-swatch" style="background:${series.color}"></i>${series.title}: <b>${text}</b></span>`;
-    };
-    const content = htl.html`<span><b>${formatDay(entry.day)}</b></span>
-      ${metric.series.map(line)}
-      ${metric.key === "requests" ? "" : htl.html`<span class="bw-tt-pool">${countOf(entry.requests.length, "backfill request")}</span>`}`;
-    if (tooltip.open(event, `${metric.key}:${+entry.day}`, content)) tooltip.hideRing();
-  };
-  attachPlotHover(tooltip, plot, find, show);
-  const totalOf = (series) => {
-    const total = series.value(requests);
-    return total == null ? "–" : metric.format(total);
-  };
-  const values = single
-    ? htl.html`<div class="bw-metric-value">${totalOf(metric.series[0])}</div>`
-    : htl.html`<div class="bw-metric-value bw-metric-multi">${metric.series.map((series) => htl.html`<span style="color:${series.color}"><small>${series.title}</small> ${totalOf(series)}</span>`)}</div>`;
-  return htl.html`<div class="bw-metric" style="width:${tileWidth}px">
-    <div class="bw-metric-title">${metric.title}</div>
-    ${values}
-    ${chartBox(plot, METRIC_HEIGHT, {left: 0, right: 0, top: METRIC_TOP, bottom: METRIC_BOTTOM, daily: true})}
-  </div>`;
-}
-
-function metricsRow({requests, domain, width}) {
-  const units = d3.sum(METRICS, ({span = 1}) => span);
-  const fits = (columns) => Math.floor((width - (columns - 1) * METRIC_GAP) / columns);
-  const columns = d3.range(units, 0, -1).find((n) => fits(n) >= METRIC_MIN_WIDTH) ?? 1;
-  const unitWidth = fits(columns);
-  const widthOf = ({span = 1}) => Math.min(span, columns) * unitWidth + (Math.min(span, columns) - 1) * METRIC_GAP;
-  return htl.html`<div class="bw-metrics" style="grid-template-columns:repeat(${columns}, ${unitWidth}px)">${METRICS.map((metric) => {
-    const tile = metricTile(metric, {requests, domain, tileWidth: widthOf(metric)});
-    tile.style.gridColumn = `span ${Math.min(metric.span ?? 1, columns)}`;
-    return tile;
-  })}</div>`;
-}
 
 // The platform's charts, each as wide as the page and collapsed from its title:
 // what its backfill requests triggered, how long they took, and what waited in the
@@ -742,7 +640,10 @@ function platformSection(pool, width, hidden, selectedRequester, domain) {
   const requestChart = (drawKey, draw, height, hidden) =>
     noRequests() ?? htl.html`${drawKey(requests, shown, selectedRequester)}${chartBox(draw({requests, shown, width, hidden, domain}), height)}`;
   const bodies = {
-    "chart-metrics": {legend: () => null, draw: () => noRequests() ?? metricsRow({requests: shown, domain, width})},
+    "chart-metrics": {
+      legend: () => null,
+      draw: () => noRequests() ?? metricsRow({items: shown, metrics: METRICS, domain, width, tooltip, noun: "backfill request", eventRules: (days) => [bugRule(days, new Set())]})
+    },
     "chart-requests": {legend: () => requests && requestsLegend(requests), draw: (hidden) => requestChart(requestsKey, requestsChart, REQUESTS_HEIGHT, hidden)},
     "chart-endtoend": {legend: () => requests && E2E_LEGEND, draw: (hidden) => requestChart(endToEndKey, endToEndChart, E2E_HEIGHT, hidden)},
     "chart-queues": {legend: () => requests?.length && QUEUE_LEGEND, draw: (hidden) => noRequests() ?? queuesBlock({requests, pool, width, hidden, domain})}
@@ -810,33 +711,6 @@ function platformSection(pool, width, hidden, selectedRequester, domain) {
 }
 .bw-clear {
   margin-bottom: 0.4rem;
-}
-.bw-metrics {
-  display: grid;
-  gap: 0.75rem 12px;
-  margin: 0.5rem 0 0;
-}
-.bw-metric-title {
-  min-height: 3.6em;
-  font-size: 0.8rem;
-  line-height: 1.2;
-  color: var(--theme-foreground-muted, #888);
-}
-.bw-metric-value {
-  font-size: 1.5rem;
-  font-weight: 600;
-  line-height: 1.2;
-}
-.bw-metric-multi {
-  display: flex;
-  gap: 0.7rem;
-  font-size: 0.95rem;
-  line-height: 1.9;
-  white-space: nowrap;
-}
-.bw-metric-multi small {
-  font-size: 0.7rem;
-  font-weight: 400;
 }
 </style>
 
