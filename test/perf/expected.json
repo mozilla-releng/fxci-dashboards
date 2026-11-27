@@ -1,0 +1,444 @@
+{
+  "libs": [
+    "@observablehq/plot@0.6.19",
+    "apache-arrow@21.2.0",
+    "d3@7.9.2",
+    "htl@1.0.0",
+    "parquet-wasm@0.9.0"
+  ],
+  "scenarios": {
+    "perf-backfill-waits, Linux talos, all days": {
+      "load": {
+        "tiles": [
+          [
+            "End-to-end time",
+            "p50 15 h 1 min p90 27 h 15 min p99 35 h 31 min"
+          ],
+          [
+            "Backfill requests",
+            "260"
+          ],
+          [
+            "People requesting backfills",
+            "10"
+          ],
+          [
+            "Builds scheduled",
+            "1,810"
+          ],
+          [
+            "Profile generations scheduled",
+            "1,550"
+          ],
+          [
+            "Perf tests scheduled",
+            "16,082"
+          ],
+          [
+            "Perf tests that never ran, upstream broke",
+            "681"
+          ]
+        ],
+        "svgs": 52,
+        "circles": 485,
+        "lines": 3337,
+        "paths": 136,
+        "anchors": 0,
+        "nodes": 4378,
+        "bodyNodes": 4482,
+        "inlineErrors": 0,
+        "html": "0a2861d04988de78",
+        "styles": "72563aab821af694"
+      },
+      "hover": {
+        "requests": {
+          "tooltips": 17
+        },
+        "candles": {
+          "tooltips": 91
+        }
+      },
+      "pin": {
+        "found": true,
+        "stays": true,
+        "releasedByEscape": true,
+        "releasedByClick": true,
+        "tooltip": {
+          "position": "fixed",
+          "zIndex": "1000",
+          "maxWidth": "520px",
+          "paddingTop": "8px",
+          "paddingLeft": "12px",
+          "borderTopLeftRadius": "4px",
+          "backgroundColor": "rgb(42, 42, 42)",
+          "color": "rgb(255, 255, 255)",
+          "fontFamily": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif",
+          "fontSize": "13px",
+          "lineHeight": "22.1px",
+          "display": "block"
+        },
+        "ring": {
+          "position": "fixed",
+          "zIndex": "999",
+          "width": "26.4667px",
+          "height": "26.4667px",
+          "borderTopWidth": "1px",
+          "borderTopColor": "rgb(27, 30, 35)",
+          "borderTopLeftRadius": "50%",
+          "transform": "matrix(1, 0, 0, 1, -14.2333, -14.2333)",
+          "pointerEvents": "none",
+          "display": "block"
+        },
+        "content": "ac5877932ceaa6cd"
+      },
+      "legend": {
+        "hidden": {
+          "pressed": [
+            "true",
+            "false",
+            "true",
+            "true",
+            "true"
+          ],
+          "charts": 1,
+          "circles": 329,
+          "lines": 3337,
+          "nodes": 4222,
+          "html": "90b8eaa1fb820933",
+          "styles": "090b7e5024098452"
+        },
+        "shown": {
+          "pressed": [
+            "true",
+            "true",
+            "true",
+            "true",
+            "true"
+          ],
+          "charts": 1,
+          "circles": 485,
+          "lines": 3337,
+          "nodes": 4378,
+          "html": "c03cca1801cde5ec",
+          "styles": "18c2a496999101f5"
+        },
+        "alone": {
+          "pressed": [
+            "true",
+            "false",
+            "true",
+            "false",
+            "false"
+          ],
+          "charts": 1,
+          "circles": 263,
+          "lines": 3337,
+          "nodes": 4156,
+          "html": "241728ad5e023546",
+          "styles": "e0741548072529dd"
+        },
+        "all": {
+          "pressed": [
+            "true",
+            "true",
+            "true",
+            "true",
+            "true"
+          ],
+          "charts": 1,
+          "circles": 485,
+          "lines": 3337,
+          "nodes": 4378,
+          "html": "c03cca1801cde5ec",
+          "styles": "18c2a496999101f5"
+        },
+        "collapsed": {
+          "pressed": [],
+          "charts": 0,
+          "circles": 218,
+          "lines": 3330,
+          "nodes": 4042,
+          "html": "3970b1146ac572d1",
+          "styles": "3e3b03c9ec4f5f5b"
+        },
+        "expanded": {
+          "pressed": [
+            "true",
+            "true",
+            "true",
+            "true",
+            "true"
+          ],
+          "charts": 1,
+          "circles": 485,
+          "lines": 3337,
+          "nodes": 4378,
+          "html": "c03cca1801cde5ec",
+          "styles": "18c2a496999101f5"
+        },
+        "restored": true
+      },
+      "zoom": {
+        "range": [
+          "2026-06-22",
+          "2026-08-07"
+        ],
+        "tiles": [
+          [
+            "End-to-end time",
+            "p50 14 h 23 min p90 25 h 13 min p99 36 h 20 min"
+          ],
+          [
+            "Backfill requests",
+            "84"
+          ],
+          [
+            "People requesting backfills",
+            "10"
+          ],
+          [
+            "Builds scheduled",
+            "553"
+          ],
+          [
+            "Profile generations scheduled",
+            "471"
+          ],
+          [
+            "Perf tests scheduled",
+            "5,175"
+          ],
+          [
+            "Perf tests that never ran, upstream broke",
+            "229"
+          ]
+        ],
+        "svgs": 52,
+        "circles": 163,
+        "lines": 1076,
+        "paths": 114,
+        "anchors": 0,
+        "nodes": 1766,
+        "bodyNodes": 1885,
+        "inlineErrors": 0,
+        "html": "36329cfb593783a5",
+        "styles": "72563aab821af694"
+      },
+      "errors": []
+    },
+    "perf-backfill-waits, mac M4, two weeks": {
+      "load": {
+        "tiles": [
+          [
+            "End-to-end time",
+            "p50 14 h 45 min p90 34 h 7 min p99 36 h 55 min"
+          ],
+          [
+            "Backfill requests",
+            "13"
+          ],
+          [
+            "People requesting backfills",
+            "7"
+          ],
+          [
+            "Builds scheduled",
+            "72"
+          ],
+          [
+            "Profile generations scheduled",
+            "91"
+          ],
+          [
+            "Perf tests scheduled",
+            "818"
+          ],
+          [
+            "Perf tests that never ran, upstream broke",
+            "82"
+          ]
+        ],
+        "svgs": 52,
+        "circles": 30,
+        "lines": 220,
+        "paths": 129,
+        "anchors": 0,
+        "nodes": 826,
+        "bodyNodes": 930,
+        "inlineErrors": 0,
+        "html": "0ecdf834a644cde6",
+        "styles": "7b9b1c2ebf662504"
+      },
+      "hover": {
+        "requests": {
+          "tooltips": 1
+        },
+        "candles": {
+          "tooltips": 6
+        }
+      },
+      "pin": {
+        "found": true,
+        "stays": true,
+        "releasedByEscape": true,
+        "releasedByClick": true,
+        "tooltip": {
+          "position": "fixed",
+          "zIndex": "1000",
+          "maxWidth": "520px",
+          "paddingTop": "8px",
+          "paddingLeft": "12px",
+          "borderTopLeftRadius": "4px",
+          "backgroundColor": "rgb(42, 42, 42)",
+          "color": "rgb(255, 255, 255)",
+          "fontFamily": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif",
+          "fontSize": "13px",
+          "lineHeight": "22.1px",
+          "display": "block"
+        },
+        "ring": {
+          "position": "fixed",
+          "zIndex": "999",
+          "width": "20.75px",
+          "height": "20.75px",
+          "borderTopWidth": "1px",
+          "borderTopColor": "rgb(27, 30, 35)",
+          "borderTopLeftRadius": "50%",
+          "transform": "matrix(1, 0, 0, 1, -11.375, -11.375)",
+          "pointerEvents": "none",
+          "display": "block"
+        },
+        "content": "c5af16a9ca3046fb"
+      },
+      "legend": {
+        "hidden": {
+          "pressed": [
+            "true",
+            "false",
+            "true",
+            "true"
+          ],
+          "charts": 1,
+          "circles": 22,
+          "lines": 220,
+          "nodes": 818,
+          "html": "73160ab73ad2d0e4",
+          "styles": "59598c9ec4c78823"
+        },
+        "shown": {
+          "pressed": [
+            "true",
+            "true",
+            "true",
+            "true"
+          ],
+          "charts": 1,
+          "circles": 30,
+          "lines": 220,
+          "nodes": 826,
+          "html": "24dc687f4fa19874",
+          "styles": "7b9b1c2ebf662504"
+        },
+        "alone": {
+          "pressed": [
+            "true",
+            "false",
+            "true",
+            "false"
+          ],
+          "charts": 1,
+          "circles": 21,
+          "lines": 220,
+          "nodes": 817,
+          "html": "53e4e0764abfa9f7",
+          "styles": "23f91f98223be932"
+        },
+        "all": {
+          "pressed": [
+            "true",
+            "true",
+            "true",
+            "true"
+          ],
+          "charts": 1,
+          "circles": 30,
+          "lines": 220,
+          "nodes": 826,
+          "html": "24dc687f4fa19874",
+          "styles": "7b9b1c2ebf662504"
+        },
+        "collapsed": {
+          "pressed": [],
+          "charts": 0,
+          "circles": 11,
+          "lines": 214,
+          "nodes": 741,
+          "html": "fecde329fae02f15",
+          "styles": "629c943484c1d7d1"
+        },
+        "expanded": {
+          "pressed": [
+            "true",
+            "true",
+            "true",
+            "true"
+          ],
+          "charts": 1,
+          "circles": 30,
+          "lines": 220,
+          "nodes": 826,
+          "html": "24dc687f4fa19874",
+          "styles": "7b9b1c2ebf662504"
+        },
+        "restored": true
+      },
+      "zoom": {
+        "range": [
+          "2026-09-01",
+          "2026-09-05"
+        ],
+        "tiles": [
+          [
+            "End-to-end time",
+            "p50 12 h 4 min p90 21 h 55 min p99 25 h 1 min"
+          ],
+          [
+            "Backfill requests",
+            "4"
+          ],
+          [
+            "People requesting backfills",
+            "3"
+          ],
+          [
+            "Builds scheduled",
+            "19"
+          ],
+          [
+            "Profile generations scheduled",
+            "18"
+          ],
+          [
+            "Perf tests scheduled",
+            "231"
+          ],
+          [
+            "Perf tests that never ran, upstream broke",
+            "0"
+          ]
+        ],
+        "svgs": 49,
+        "circles": 12,
+        "lines": 98,
+        "paths": 94,
+        "anchors": 0,
+        "nodes": 606,
+        "bodyNodes": 725,
+        "inlineErrors": 0,
+        "html": "0cbe040fc941f474",
+        "styles": "25d1e9cb09a46e50"
+      },
+      "errors": []
+    }
+  }
+}

@@ -1,6 +1,9 @@
 .DS_Store
 
 /dist/
+/dist-ci/
+/.fixtures/
+/perf-results/
 node_modules/
 src/.observablehq/cache/
 yarn-error.log

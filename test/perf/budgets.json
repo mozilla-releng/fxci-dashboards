@@ -1,0 +1,7 @@
+{
+  "ready_ms": 3000,
+  "hover_p95_ms": 30,
+  "zoom_ms": 400,
+  "frame_load_max_ms": 650,
+  "frame_interact_max_ms": 1500
+}

@@ -76,6 +76,22 @@ var, bad query id, network/auth) or `.md`/import parse errors. It does **not**
 fail on a runtime error inside a page's reactive JS block — those render
 inline instead — so put data-shape assertions in loaders.
 
+## Tests
+
+`npm test` runs the unit tests (`test/unit/`). `npm run test:perf` builds the
+site from fixtures and checks the pages in a browser; the README says what it
+checks and how to re-record it.
+
+- A page that is added to `test/perf/scenarios.js` needs a table in
+  `scripts/make-fixtures.js` for each of its queries, with the columns of the
+  real query. A query without one builds as an empty result.
+- Never write fixtures into `src/data`: a static file there beats the data
+  loader, and would replace real data in a dev server or a deploy. Fixtures are
+  read through `STMO_FIXTURES_DIR`, which `src/data/_stmo.js` refuses to honour
+  in a deploy.
+- `test:perf` runs a browser, which a sandbox may refuse to start; run it outside
+  the sandbox if it does, one command at a time.
+
 ## Build & deploy
 
     npm run build
