@@ -7,7 +7,8 @@
     "dev": "observable preview",
     "deploy": "observable deploy",
     "observable": "observable",
-    "format": "prettier --write \"src/**/*.{js,md}\" \"*.js\""
+    "format": "prettier --write \"src/**/*.{js,md}\" \"*.js\"",
+    "test": "node --test \"test/unit/*.test.js\""
   },
   "dependencies": {
     "@observablehq/framework": "^1.13.4",
@@ -20,6 +21,6 @@
     "rimraf": "^5.0.5"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   }
 }
