@@ -38,6 +38,7 @@ import {openDependencyTimeline, openDownstreamTimeline, poolActivityDays} from "
 import {openQueueGantt} from "./_queue-profile.js";
 import {indexQueueSeries, KINDS as QUEUE_KINDS, queuedPerBucket} from "./_queue-position.js";
 import {FIRST_DAY, LAST_DAY} from "./_task-queues.js";
+import {attachPlotHover, createTooltip, nearestBar, nearestDot, timelineLink} from "./_tooltip.js";
 ```
 
 ```js
@@ -267,35 +268,6 @@ function poolActivityUrls(queue, fromMs, toMs) {
   return poolActivityDays(fromMs, toMs, (date) => workersUrl(queue, date));
 }
 
-// A link that opens a Gantt in the Firefox Profiler. `open` gets a progress
-// callback and returns the opener's result. The window opens inside the click so
-// popup blockers allow it.
-function timelineLink(text, open, filename) {
-  const link = htl.html`<a href="#">${text}</a>`;
-  link.addEventListener("click", async (event) => {
-    event.preventDefault();
-    if (link.dataset.busy) return;
-    link.dataset.busy = "true";
-    const label = link.textContent;
-    try {
-      const result = await open((count) => {
-        link.textContent = `→ Loading ${count} tasks…`;
-      });
-      link.textContent = label;
-      if (!result.opened) {
-        link.href = result.downloadUrl;
-        link.download = filename;
-        link.textContent = "→ Popup blocked: download the profile, then drop it on profiler.firefox.com";
-      }
-    } catch (error) {
-      link.textContent = `${text} failed: ${error.message}`;
-    } finally {
-      delete link.dataset.busy;
-    }
-  });
-  return link;
-}
-
 // Where a task's dependency timeline opens from, so that a profile can link its
 // tasks to theirs. The page shows a link to open it, since the profiler can only
 // be opened from a click.
@@ -336,51 +308,7 @@ const queueGanttLink = ({queue, roles, time}) =>
     `${queue.replace("/", "-")}-queue.json`
   );
 
-// One tooltip shared by every chart. Hovering opens it and it stays open briefly
-// after the pointer leaves, and while the pointer is over it. Clicking pins it, so
-// the pointer can travel to its links; clicking elsewhere or pressing Escape
-// releases it.
-const tooltipState = {key: null, hideTimer: null, pinned: false, dragging: false};
-const OVERLAY_IDS = ["bw-tooltip", "bw-ring"];
-
-function hideTooltip() {
-  tooltipState.key = null;
-  tooltipState.pinned = false;
-  for (const id of OVERLAY_IDS) document.getElementById(id).style.display = "none";
-}
-
-function scheduleHideTooltip() {
-  if (tooltipState.pinned) return;
-  clearTimeout(tooltipState.hideTimer);
-  tooltipState.hideTimer = setTimeout(hideTooltip, 220);
-}
-
-const tooltipElement = document.getElementById("bw-tooltip");
-tooltipElement.onpointerenter = () => clearTimeout(tooltipState.hideTimer);
-tooltipElement.onpointerleave = scheduleHideTooltip;
-document.onclick = (event) => {
-  if (!tooltipElement.contains(event.target)) hideTooltip();
-};
-document.onkeydown = (event) => {
-  if (event.key === "Escape") hideTooltip();
-};
-
-function openTooltip(event, key, content) {
-  if (tooltipState.pinned || tooltipState.dragging) return false;
-  clearTimeout(tooltipState.hideTimer);
-  if (tooltipState.key === key) return false;
-  tooltipState.key = key;
-
-  tooltipElement.replaceChildren(content);
-  tooltipElement.style.display = "block";
-  const {offsetWidth, offsetHeight} = tooltipElement;
-  const gap = 14;
-  const flipX = event.clientX + gap + offsetWidth > window.innerWidth;
-  const flipY = event.clientY + gap + offsetHeight > window.innerHeight;
-  tooltipElement.style.left = `${flipX ? event.clientX - offsetWidth - gap : event.clientX + gap}px`;
-  tooltipElement.style.top = `${flipY ? event.clientY - offsetHeight - gap : event.clientY + gap}px`;
-  return true;
-}
+const tooltip = createTooltip({invalidation});
 
 const REQUEST_RADII = [2, 14];
 const requestRadius = (tests, maxTests) => REQUEST_RADII[0] + (REQUEST_RADII[1] - REQUEST_RADII[0]) * Math.sqrt(tests / maxTests);
@@ -396,7 +324,7 @@ function requesterLink(name) {
   link.addEventListener("click", (event) => {
     event.preventDefault();
     document.dispatchEvent(new CustomEvent("bw-requester", {detail: name}));
-    hideTooltip();
+    tooltip.hide();
   });
   return link;
 }
@@ -463,65 +391,14 @@ function endToEndTooltipContent(request) {
     <span class="bw-tt-pool">${request.pool}</span>`;
 }
 
-// Rings the point on its chart, sized to it.
-function ringPoint(chartRect, {x, y}, size) {
-  const ring = document.getElementById("bw-ring");
-  ring.style.width = `${size}px`;
-  ring.style.height = `${size}px`;
-  ring.style.left = `${chartRect.left + x}px`;
-  ring.style.top = `${chartRect.top + y}px`;
-  ring.style.display = "block";
-}
-
 function showRequest(event, point, chartRect) {
-  if (!openTooltip(event, point.request, requestTooltipContent(point.request))) return;
-  ringPoint(chartRect, point, Math.max(12, 2 * point.radius + 4));
+  if (!tooltip.open(event, point.request, requestTooltipContent(point.request))) return;
+  tooltip.showRing(chartRect, point, Math.max(12, 2 * point.radius + 4));
 }
 
 function showEndToEnd(event, point, chartRect) {
-  if (!openTooltip(event, point.request.chain, endToEndTooltipContent(point.request))) return;
-  ringPoint(chartRect, point, 12);
-}
-
-// The dot under the pointer: of the dots it is inside, the smallest, so a small
-// dot on top of a big one stays reachable. Otherwise the nearest within reach.
-function requestAt(points, x, y) {
-  const distanceTo = (point) => Math.hypot(point.x - x, point.y - y);
-  const inside = points.filter((point) => distanceTo(point) <= point.radius);
-  if (inside.length) return inside.reduce((best, point) => (point.radius < best.radius ? point : best));
-  const near = points.filter((point) => distanceTo(point) <= HIT_RADIUS);
-  return near.length ? near.reduce((best, point) => (distanceTo(point) < distanceTo(best) ? point : best)) : null;
-}
-
-// The bar under the pointer: the nearest one within reach sideways, anywhere
-// from the axis up to a little above its dot.
-function barAt(points, x, y) {
-  const near = points.filter((point) => Math.abs(point.x - x) <= E2E_BAR_WIDTH && y >= point.y - HIT_RADIUS && y <= point.baseline + HIT_RADIUS);
-  return near.length ? near.reduce((best, point) => (Math.abs(point.x - x) < Math.abs(best.x - x) ? point : best)) : null;
-}
-
-// Hover and click on a Plot chart, with the tooltip shared by the other charts.
-// `find` gets the pointer's position in the chart and returns the point there.
-function attachPlotHover(plot, find, show) {
-  const hitAt = (event) => {
-    const rect = plot.getBoundingClientRect();
-    return {point: find(event.clientX - rect.left, event.clientY - rect.top), rect};
-  };
-  plot.addEventListener("pointermove", (event) => {
-    const {point, rect} = hitAt(event);
-    plot.style.cursor = point ? "pointer" : "";
-    if (point) show(event, point, rect);
-    else scheduleHideTooltip();
-  });
-  plot.addEventListener("pointerleave", scheduleHideTooltip);
-  plot.addEventListener("click", (event) => {
-    event.stopPropagation();
-    const {point, rect} = hitAt(event);
-    tooltipState.pinned = false;
-    if (!point) return hideTooltip();
-    show(event, point, rect);
-    tooltipState.pinned = true;
-  });
+  if (!tooltip.open(event, point.request.chain, endToEndTooltipContent(point.request))) return;
+  tooltip.showRing(chartRect, point, 12);
 }
 
 // What each backfill request triggered, on the same date axis as the task charts
@@ -567,7 +444,7 @@ function requestsChart({requests, shown, width, hidden, domain}) {
     y: y.apply(request.builds),
     radius: requestRadius(request.tests, maxTests)
   }));
-  attachPlotHover(plot, (px, py) => requestAt(points, px, py), showRequest);
+  attachPlotHover(tooltip, plot, (px, py) => nearestDot(points, px, py, HIT_RADIUS), showRequest);
   return plot;
 }
 
@@ -622,7 +499,7 @@ function endToEndChart({requests, shown, width, hidden, domain}) {
   const y = plot.scale("y");
   const drawnHours = (request) => Math.max(topHours(request), markedRequests.has(request) ? blockedHours(request) : 0);
   const points = ends.map((request) => ({request, x: x.apply(request.time), y: y.apply(drawnHours(request)), baseline: y.apply(0)}));
-  attachPlotHover(plot, (px, py) => barAt(points, px, py), showEndToEnd);
+  attachPlotHover(tooltip, plot, (px, py) => nearestBar(points, px, py, {barWidth: E2E_BAR_WIDTH, hitRadius: HIT_RADIUS}), showEndToEnd);
   return plot;
 }
 
@@ -690,9 +567,9 @@ function queueChart({queue, roles, width, hidden, domain}) {
   const show = (event, {bucket}) => {
     const counts = new Map(QUEUE_LAYERS.map((layer) => [layer.key, valueOf(layer, bucket)]));
     const content = queueTooltipContent({queue, roles, time: timeOf(bucket), counts, total: totalOf(bucket, QUEUE_LAYERS)});
-    if (openTooltip(event, `${queue}:${bucket}:${bucketSeconds}`, content)) document.getElementById("bw-ring").style.display = "none";
+    if (tooltip.open(event, `${queue}:${bucket}:${bucketSeconds}`, content)) tooltip.hideRing();
   };
-  attachPlotHover(plot, find, show);
+  attachPlotHover(tooltip, plot, find, show);
   return plot;
 }
 
@@ -824,7 +701,7 @@ function syncCharts(section, domain, select) {
 
   const lines = boxes.map((box) => ({box, line: box.querySelector(".bw-crosshair")}));
   const hideLines = () => {
-    if (!tooltipState.pinned) for (const {line} of lines) line.style.display = "none";
+    if (!tooltip.state.pinned) for (const {line} of lines) line.style.display = "none";
   };
   section.addEventListener("pointermove", (event) => {
     const box = event.target.closest?.(".bw-chart");
@@ -856,8 +733,8 @@ function syncCharts(section, domain, select) {
     if (!drag.active && Math.abs(event.clientX - drag.startX) < DRAG_PIXELS) return;
     if (!drag.active) {
       drag.active = true;
-      tooltipState.dragging = true;
-      hideTooltip();
+      tooltip.state.dragging = true;
+      tooltip.hide();
       for (const {line} of lines) line.style.display = "none";
     }
     const fractions = [drag.fraction, clamp(fractionAt(drag.box, event.clientX))].sort((a, b) => a - b);
@@ -870,8 +747,8 @@ function syncCharts(section, domain, select) {
     window.removeEventListener("pointercancel", cancel);
     const {active, range} = drag;
     drag = null;
-    tooltipState.dragging = false;
-    if (active) hideTooltip();
+    tooltip.state.dragging = false;
+    if (active) tooltip.hide();
     showSelection(null);
     if (!active || !range || range[1] - range[0] <= 0) return;
     // The click that follows a drag is not one.
@@ -980,9 +857,9 @@ function metricTile(metric, {requests, domain, tileWidth}) {
     const content = htl.html`<span><b>${formatDay(entry.day)}</b></span>
       ${metric.series.map(line)}
       ${metric.key === "requests" ? "" : htl.html`<span class="bw-tt-pool">${countOf(entry.requests.length, "backfill request")}</span>`}`;
-    if (openTooltip(event, `${metric.key}:${+entry.day}`, content)) document.getElementById("bw-ring").style.display = "none";
+    if (tooltip.open(event, `${metric.key}:${+entry.day}`, content)) tooltip.hideRing();
   };
-  attachPlotHover(plot, find, show);
+  attachPlotHover(tooltip, plot, find, show);
   const totalOf = (series) => {
     const total = series.value(requests);
     return total == null ? "–" : metric.format(total);
@@ -1208,53 +1085,6 @@ function columnTitles(width, {chartKey, title}, collapsed) {
   font-size: 0.7rem;
   font-weight: 400;
 }
-#bw-tooltip {
-  position: fixed;
-  z-index: 1000;
-  display: none;
-  max-width: 520px;
-  padding: 8px 12px;
-  border-radius: 4px;
-  background: #2a2a2a;
-  color: white;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  font-size: 13px;
-  line-height: 1.7;
-}
-#bw-tooltip span,
-#bw-tooltip a {
-  display: block;
-  color: inherit;
-  text-decoration: none;
-  overflow-wrap: anywhere;
-}
-#bw-tooltip a {
-  color: #7ecfff;
-}
-#bw-tooltip a:hover {
-  text-decoration: underline;
-}
-#bw-tooltip .bw-tt-sep {
-  margin: 4px 0;
-  border-top: 1px solid #555;
-}
-#bw-tooltip .bw-tt-expired {
-  color: #f2c14e;
-}
-#bw-tooltip .bw-tt-blocked {
-  color: #ff8a8f;
-}
-#bw-tooltip .bw-tt-pool {
-  font-size: 0.9em;
-  color: #bbb;
-}
-#bw-tooltip .bw-swatch {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  margin-right: 6px;
-  border-radius: 2px;
-}
 .bw-chart {
   position: relative;
   -webkit-user-select: none;
@@ -1294,25 +1124,7 @@ function columnTitles(width, {chartKey, title}, collapsed) {
   font-size: 10px;
   white-space: nowrap;
 }
-#bw-tooltip .bw-tt-links a {
-  display: inline;
-  margin-right: 0.6em;
-}
-#bw-ring {
-  position: fixed;
-  z-index: 999;
-  display: none;
-  width: 12px;
-  height: 12px;
-  transform: translate(-50%, -50%);
-  border: 1.5px solid currentColor;
-  border-radius: 50%;
-  pointer-events: none;
-}
 </style>
-
-<div id="bw-tooltip"></div>
-<div id="bw-ring"></div>
 
 ```js
 // The platform is seeded from ?platform= so a link reproduces the view. Kept
